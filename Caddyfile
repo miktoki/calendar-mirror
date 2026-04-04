@@ -1,0 +1,9 @@
+:8080 {
+    root * /home/pi/rpi-calendar/frontend
+    file_server
+    try_files {path} /index.html
+
+    handle /api/* {
+        reverse_proxy localhost:5000
+    }
+}

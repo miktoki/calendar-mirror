@@ -1,0 +1,27 @@
+# Secrets – never commit these
+.env
+*.json
+
+!package.json
+!package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# JS
+**/node_modules/
+**/.svelte-kit/
+
+# IDE
+.vscode/settings.json
+*.code-workspace
+
+# db
+*.db
