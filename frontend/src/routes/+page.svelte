@@ -2,8 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { currentView, VALID_VIEWS, type View } from '$lib/stores';
 	import { fetchEvents, fetchWeather } from '$lib/api';
-	import type { CalendarEvent, WeatherRecord, TimeSeries } from '$lib/api';
-	import { weatherDayKeyForLocalDay } from '$lib/dateUtils';
+	import type { CalendarEvent, WeatherRecord } from '$lib/api';
 	import DayView from '$lib/components/DayView.svelte';
 	import WeekView from '$lib/components/WeekView.svelte';
 	import MonthView from '$lib/components/MonthView.svelte';
@@ -17,8 +16,6 @@
 
 	let events: CalendarEvent[] = [];
 	let weather: WeatherRecord | null = null;
-	let weatherByDay: Record<string, TimeSeries[]> = {};
-	let wxDebug = false;
 	let anchor = new Date();
 	let loadError = '';
 	let lastFetchedAt = 0;
@@ -31,25 +28,6 @@
 	// The date range currently covered by `events` (set after each fetch)
 	let fetchedMin: Date | null = null;
 	let fetchedMax: Date | null = null;
-
-	function utcDateKey(d: Date): string {
-		const y = d.getUTCFullYear();
-		const m = String(d.getUTCMonth() + 1).padStart(2, '0');
-		const day = String(d.getUTCDate()).padStart(2, '0');
-		return `${y}-${m}-${day}`;
-	}
-
-	$: {
-		const series = weather?.forecast?.properties?.timeseries ?? [];
-		const map: Record<string, TimeSeries[]> = {};
-		for (const ts of series) {
-			const key = utcDateKey(new Date(ts.time));
-			(map[key] ??= []).push(ts);
-		}
-		weatherByDay = map;
-	}
-
-	// (debug note) use the wxdebug overlay instead of console logging.
 
 	function saveAnchor(d: Date) {
 		if (!mounted) return;
@@ -73,13 +51,8 @@
 
 	function readViewFromUrl(): View | null {
 		const param = new URL(window.location.href).searchParams.get('view');
-		wxDebug = new URL(window.location.href).searchParams.get('wxdebug') === '1';
 		return VALID_VIEWS.includes(param as View) ? (param as View) : null;
 	}
-
-	$: wxTodayKey = weatherDayKeyForLocalDay(new Date());
-	$: wxTodayLen = weatherByDay[wxTodayKey]?.length ?? 0;
-	$: wxDays = Object.keys(weatherByDay).length;
 
 	/** Merge new events into the existing array, deduplicating by id. */
 	function mergeEvents(existing: CalendarEvent[], incoming: CalendarEvent[]): CalendarEvent[] {
@@ -116,6 +89,10 @@
 		return { min: gridStart, max: gridEnd };
 	}
 
+	function defaultFetchedMin(now: Date): Date {
+		return new Date(now.getFullYear(), now.getMonth() - 1, 1);
+	}
+
 	async function refresh() {
 		if (refreshInFlight) {
 			refreshController?.abort();
@@ -126,8 +103,9 @@
 		refreshWeatherIfNeeded();
 		try {
 			events = await fetchEvents(undefined, undefined, signal);
-			fetchedMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-			fetchedMax = new Date(Date.now() + 150 * 24 * 60 * 60 * 1000);
+			const now = new Date();
+			fetchedMin = defaultFetchedMin(now);
+			fetchedMax = new Date(now.getTime() + 150 * 24 * 60 * 60 * 1000);
 			lastFetchedAt = Date.now();
 			lastRangeFetchAt = Date.now();
 			loadError = '';
@@ -148,8 +126,9 @@
 		}
 		try {
 			weather = await fetchWeather();
-		} catch {
-			// keep existing weather data
+			console.log('[weather] fetched, timeseries length:', weather?.forecast?.properties?.timeseries?.length);
+		} catch (e) {
+			console.warn('[weather] fetch failed:', e);
 		}
 	}
 
@@ -217,23 +196,12 @@
 	<div class="error-banner">{loadError}</div>
 {/if}
 
-{#if wxDebug}
-	<div class="wx-debug">
-		<div><strong>wx</strong></div>
-		<div>weather: {weather ? 'yes' : 'no'}</div>
-		<div>fetched_at: {weather?.fetched_at ?? '-'}</div>
-		<div>weatherByDay keys: {wxDays}</div>
-		<div>today key: {wxTodayKey} ({wxTodayLen})</div>
-		<div>sample keys: {Object.keys(weatherByDay).slice(0, 3).join(', ')}</div>
-	</div>
-{/if}
-
 {#if $currentView === 'day'}
 	<DayView {events} {weather} bind:anchor />
 {:else if $currentView === 'week'}
-	<WeekView {events} {weather} {weatherByDay} bind:anchor />
+	<WeekView {events} {weather} bind:anchor />
 {:else if $currentView === 'month'}
-	<MonthView {events} {weather} {weatherByDay} bind:anchor />
+	<MonthView {events} {weather} bind:anchor />
 {:else if $currentView === 'weather'}
 	<WeatherView {weather} />
 {:else if $currentView === 'todo'}
@@ -252,18 +220,5 @@
 		padding: 0.5rem;
 		font-size: 0.85rem;
 		z-index: 200;
-	}
-
-	.wx-debug {
-		position: fixed;
-		bottom: 0.5rem;
-		left: 0.5rem;
-		background: rgba(0, 0, 0, 0.75);
-		color: white;
-		padding: 0.4rem 0.5rem;
-		border-radius: 0.4rem;
-		font-size: 0.75rem;
-		z-index: 300;
-		line-height: 1.25;
 	}
 </style>

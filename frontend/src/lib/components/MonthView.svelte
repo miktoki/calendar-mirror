@@ -6,7 +6,6 @@
 		isSameDay, formatMonthYear, isAllDay, eventStart, formatTime,
 		isoWeekNumber, localDateStr
 	} from '$lib/dateUtils';
-	import { weatherDayKeyForLocalDay } from '$lib/dateUtils';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
 	import EventPopup from './EventPopup.svelte';
@@ -15,14 +14,14 @@
 	export let events: CalendarEvent[];
 	export let anchor: Date;
 	export let weather: WeatherRecord | null = null;
-	export let weatherByDay: Record<string, TimeSeries[]> = {};
 
 	let popupEvent: CalendarEvent | null = null;
 
 	const today = new Date();
 	const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-	const CELL_HEADER_PX = 22;
-	const CHIP_PX = 16; // chip height in px (font 0.68rem + 0.04rem padding + gap)
+	const CELL_HEADER_PX = 20;
+	const CHIP_PX = 11;
+	const MAX_VISIBLE_ROWS = 6;
 
 	let gridEl: HTMLElement;
 	let cellHeight = 80;
@@ -30,7 +29,10 @@
 
 	// Max chips that visually fit in a cell (no overflow line reserved yet;
 	// per-cell logic in template reserves 1 slot for "+N more" when needed).
-	$: maxVisible = Math.floor((cellHeight - CELL_HEADER_PX) / CHIP_PX);
+	$: maxVisible = Math.max(
+		1,
+		Math.min(MAX_VISIBLE_ROWS, Math.floor((cellHeight - CELL_HEADER_PX) / CHIP_PX))
+	);
 
 	onMount(() => {
 		ro = new ResizeObserver((entries) => {
@@ -49,11 +51,48 @@
 	$: isCurrentMonth =
 		anchor.getMonth() === today.getMonth() && anchor.getFullYear() === today.getFullYear();
 
-	$: cellsWithWeather = cells.map((day) => ({
-		day,
-		series: weatherByDay[weatherDayKeyForLocalDay(day)] ?? []
-	}));
+	$: timeseries = weather?.forecast?.properties?.timeseries ?? [];
+
+	function buildCells(cells: Date[], timeseries: TimeSeries[]): { day: Date; series: TimeSeries[] }[] {
+		return cells.map((day) => {
+			const key = localDateStr(day);
+			return { day, series: timeseries.filter((ts) => localDateStr(new Date(ts.time)) === key) };
+		});
+	}
+
+	$: cellsWithWeather = buildCells(cells, timeseries);
+
+	function shouldHandleCalendarKeys(event: KeyboardEvent): boolean {
+		if (popupEvent || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return true;
+		return !target.closest('input, textarea, select, [contenteditable="true"]');
+	}
+
+	function openViewSwitcher() {
+		window.dispatchEvent(new CustomEvent('view-switcher:open'));
+	}
+
+	function onWindowKeydown(event: KeyboardEvent) {
+		if (!shouldHandleCalendarKeys(event)) return;
+		if (event.key === 'ArrowLeft') {
+			event.preventDefault();
+			anchor = addMonths(anchor, -1);
+			return;
+		}
+		if (event.key === 'ArrowRight') {
+			event.preventDefault();
+			anchor = addMonths(anchor, 1);
+			return;
+		}
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			openViewSwitcher();
+		}
+	}
 </script>
+
+<svelte:window on:keydown={onWindowKeydown} />
 
 <div class="month-view">
 	<header class="month-header">
@@ -211,9 +250,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		min-height: 1.15rem;
 		flex-shrink: 0;
 	}
-
 
 	.cal-cell.other-month {
 		opacity: 0.35;
@@ -222,7 +261,7 @@
 	.day-num {
 		font-size: 0.8rem;
 		font-weight: 600;
-		line-height: 1.4;
+		line-height: 1.15;
 		flex-shrink: 0;
 	}
 
@@ -240,19 +279,21 @@
 	.event-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.07rem;
+		gap: 0.03rem;
 		overflow: hidden;
 	}
 
 	.ev-chip {
 		display: flex;
-		gap: 0.2rem;
+		gap: 0.16rem;
 		align-items: baseline;
+		background-image: none;
 		border-left: 2px solid rgba(0, 0, 0, 0.15);
 		border-radius: 0.2rem;
-		padding: 0.02rem 0.3rem;
+		padding: 0 0.24rem;
 		font-size: 0.68rem;
-		line-height: 1.4;
+		font-weight: 500;
+		line-height: 1.16;
 		overflow: hidden;
 		white-space: nowrap;
 		cursor: pointer;
@@ -269,8 +310,9 @@
 	}
 
 	.overflow {
-		font-size: 0.65rem;
+		font-size: 0.62rem;
+		line-height: 1.1;
 		color: var(--pico-muted-color);
-		padding-left: 0.2rem;
+		padding-left: 0.15rem;
 	}
 </style>

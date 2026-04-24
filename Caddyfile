@@ -1,9 +1,19 @@
-:8080 {
-    root * /home/pi/rpi-calendar/frontend
-    file_server
-    try_files {path} /index.html
+:{$CADDY_PORT:8080} {
+    root * {$FRONTEND_ROOT:/home/pi/rpi-calendar/frontend}
 
+    # API: always proxy, never fall back to SPA HTML.
     handle /api/* {
-        reverse_proxy localhost:5000
+        reverse_proxy {$BACKEND_ADDR:127.0.0.1:5000}
+    }
+
+    # Weather icons: treat as real static assets (no SPA fallback).
+    handle /wx/* {
+        file_server
+    }
+
+    # Static site + SPA fallback
+    handle {
+        try_files {path} /index.html
+        file_server
     }
 }

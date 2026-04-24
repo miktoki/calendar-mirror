@@ -1,0 +1,2 @@
+$ node ./node_modules/eslint/bin/eslint.js src --format json
+error: script "lint:svelte" exited with code 1

@@ -1,14 +1,15 @@
 [Unit]
-Description=RPi Calendar Flask Backend
-After=network.target pocketbase.service
+Description=RPi Calendar FastAPI Backend
+After=network.target
 
 [Service]
 User=pi
 WorkingDirectory=/home/pi/rpi-calendar/backend
-ExecStart=/home/pi/.local/bin/uv run gunicorn -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:5000 app:app
+Environment="PATH=/home/pi/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=uv run gunicorn -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:5000 app:app
 Restart=always
 RestartSec=5
-EnvironmentFile=/home/pi/rpi-calendar/backend/.env
+EnvironmentFile=-/home/pi/rpi-calendar/backend/.env
 
 [Install]
 WantedBy=multi-user.target

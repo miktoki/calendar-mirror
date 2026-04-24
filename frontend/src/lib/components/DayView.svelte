@@ -1,13 +1,15 @@
 <script lang="ts">
 	import type { CalendarEvent, WeatherRecord } from '$lib/api';
-	import { eventColor } from '$lib/api';
 	import {
 		eventStart, eventEnd, isAllDay, formatTime, formatDate,
-		eventsOnDay, addDays, startOfDay, localDateStr, layoutOverlappingTimedEvents
+		eventsOnDay, addDays, startOfDay, localDateStr, timedSegmentsForDay, layoutOverlappingSegments,
+		timedEventChipContent, plainTextFromHtml
 	} from '$lib/dateUtils';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
 	import EventPopup from './EventPopup.svelte';
+	import AllDayEventChip from './AllDayEventChip.svelte';
+	import TimedEventChip from './TimedEventChip.svelte';
 
 	export let events: CalendarEvent[];
 	export let anchor: Date;
@@ -17,9 +19,24 @@
 
 	$: day = startOfDay(anchor);
 	$: dayEvents = eventsOnDay(events, day);
-	$: timedEvents = dayEvents.filter((e) => !isAllDay(e));
+	$: allSegments = timedSegmentsForDay(dayEvents, day, START_HOUR);
+	$: fullDaySegments = allSegments.filter((s) => s.isFullDay);
+	$: timedSegments = allSegments.filter((s) => !s.isFullDay);
 	$: allDayEvents = dayEvents.filter((e) => isAllDay(e));
-	$: layout = layoutOverlappingTimedEvents(timedEvents);
+	$: layout = layoutOverlappingSegments(timedSegments);
+	$: timedRender = timedSegments.map((segment) => {
+		const height = heightPx(segment.displayStart, segment.displayEnd);
+		const eventLayout = layout.get(segment.id);
+		const chip = timedEventChipContent(height, eventLayout?.width ?? 1, Boolean(segment.ev.description));
+		const description = plainTextFromHtml(segment.ev.description);
+		const leftPct = (eventLayout?.left ?? 0) * 100;
+		const widthPct = (eventLayout?.width ?? 1) * 100;
+		const style = timedStyle(topPx(segment.displayStart), height, leftPct, widthPct);
+		return {
+			segment,
+			config: timedChipConfig(segment, chip, description, style),
+		};
+	});
 
 	const today = new Date();
 
@@ -31,27 +48,107 @@
 	const START_HOUR = 6;
 	const END_HOUR = 23;
 
-	function topPx(ev: CalendarEvent): number {
-		const s = eventStart(ev);
-		const minutes = s.getHours() * 60 + s.getMinutes() - START_HOUR * 60;
+	function topPx(start: Date): number {
+		const minutes = start.getHours() * 60 + start.getMinutes() - START_HOUR * 60;
 		return Math.max(0, (minutes / 60) * HOUR_HEIGHT);
 	}
 
-	function heightPx(ev: CalendarEvent): number {
-		const s = eventStart(ev);
-		const e = eventEnd(ev);
-		const dur = (e.getTime() - s.getTime()) / 60000;
+	function heightPx(start: Date, end: Date): number {
+		const dur = (end.getTime() - start.getTime()) / 60000;
 		return Math.max(20, (dur / 60) * HOUR_HEIGHT);
+	}
+
+	function openPopup(ev: CalendarEvent) {
+		popupEvent = ev;
+	}
+
+	function timedStyle(top: number, height: number, leftPct: number, widthPct: number): string {
+		return `top: ${top}px; height: ${height}px; left: ${leftPct}%; width: ${widthPct}%;`;
+	}
+
+	function timedChipConfig(
+		segment: { ev: CalendarEvent; start: Date; end: Date; displayStart: Date; displayEnd: Date; isContinuation: boolean; endsAtMidnight: boolean },
+		chip: ReturnType<typeof timedEventChipContent>,
+		description: string,
+		style: string,
+	) {
+		let startText: string;
+		let endText: string | null;
+		if (segment.isContinuation) {
+			// Continuation day (day 2, day 3…): no start time shown, show end time with leading dash
+			startText = '';
+			endText = formatTime(segment.end);
+		} else if (segment.endsAtMidnight) {
+			// Starts here, runs to midnight: show start time with trailing dash
+			startText = formatTime(segment.start);
+			endText = '';
+		} else {
+			startText = formatTime(segment.start);
+			endText = chip.showEndTime ? formatTime(segment.end) : null;
+		}
+		return {
+			startText,
+			endText,
+			description,
+			compact: chip.compact,
+			narrow: chip.narrow,
+			titleLines: chip.titleLines,
+			descriptionLines: chip.descriptionLines,
+			density: 'day' as const,
+			style,
+		};
+	}
+
+	function timedRenderKey(item: { segment: { id: string } }, index: number): string {
+		return `${item.segment.id}:${index}`;
 	}
 
 	const hours = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
 
 	$: isToday = day.toDateString() === today.toDateString();
+
+	function shouldHandleCalendarKeys(event: KeyboardEvent): boolean {
+		if (popupEvent || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
+		const target = event.target;
+		if (!(target instanceof HTMLElement)) return true;
+		return !target.closest('input, textarea, select, [contenteditable="true"]');
+	}
+
+	function openViewSwitcher() {
+		window.dispatchEvent(new CustomEvent('view-switcher:open'));
+	}
+
+	function onWindowKeydown(event: KeyboardEvent) {
+		if (!shouldHandleCalendarKeys(event)) return;
+		if (event.key === 'ArrowLeft') {
+			event.preventDefault();
+			anchor = addDays(anchor, -1);
+			return;
+		}
+		if (event.key === 'ArrowRight') {
+			event.preventDefault();
+			anchor = addDays(anchor, 1);
+			return;
+		}
+		if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			currentView.set('week');
+			return;
+		}
+		if (event.key === 'ArrowDown') {
+			event.preventDefault();
+			openViewSwitcher();
+		}
+	}
 </script>
+
+<svelte:window on:keydown={onWindowKeydown} />
 
 <div class="day-view">
 	<header class="day-header">
-		<button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -1))}>‹</button>
+		<div class="header-left">
+			<button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -1))}>‹</button>
+		</div>
 		<h2 class="nav-label" on:click={() => currentView.set('week')}>{formatDate(day)}</h2>
 		<div class="header-right">
 			{#if !isToday}
@@ -61,11 +158,13 @@
 		</div>
 	</header>
 
-	{#if allDayEvents.length}
+	{#if allDayEvents.length || fullDaySegments.length}
 		<div class="allday-row">
 			{#each allDayEvents as ev}
-				{@const c = eventColor(ev)}
-				<span class="chip" style="background: {c.bg}; color: {c.fg};" on:click={() => (popupEvent = ev)}>{ev.summary}</span>
+				<AllDayEventChip event={ev} density="day" onOpen={openPopup} />
+			{/each}
+			{#each fullDaySegments as seg}
+				<AllDayEventChip event={seg.ev} density="day" onOpen={openPopup} />
 			{/each}
 		</div>
 	{/if}
@@ -84,31 +183,12 @@
 				</div>
 			{/each}
 
-			{#each timedEvents as ev}
-				{@const c = eventColor(ev)}
-				{@const h = heightPx(ev)}
-				{@const compact = h < 32}
-				{@const l = layout.get(ev.id)}
-				{@const leftPct = ((l?.left ?? 0) * 100)}
-				{@const widthPct = ((l?.width ?? 1) * 100)}
-				<div
-					class="event-block"
-					class:compact
-					style="top: {topPx(ev)}px; height: {h}px; left: {leftPct}%; width: {widthPct}%; background: {c.bg}; color: {c.fg};"
-					on:click|stopPropagation={() => (popupEvent = ev)}
-				>
-					<div class="ev-title-row">
-						<strong>{ev.summary}</strong>
-						{#if h >= 20}
-							<span class="ev-time">{formatTime(eventStart(ev))} – {formatTime(eventEnd(ev))}</span>
-						{/if}
-					</div>
-					{#if !compact && h >= 64 && ev.location}
-						<span class="ev-location">{ev.location}</span>
-					{:else if !compact && h >= 72 && ev.description}
-						<span class="ev-notes">{@html ev.description}</span>
-					{/if}
-				</div>
+			{#each timedRender as item, itemIdx (timedRenderKey(item, itemIdx))}
+				<TimedEventChip
+					event={item.segment.ev}
+					config={item.config}
+					onOpen={openPopup}
+				></TimedEventChip>
 			{/each}
 		</div>
 	</div>
@@ -125,18 +205,23 @@
 	}
 
 	.day-header {
-		display: flex;
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
 		align-items: center;
-		justify-content: space-between;
 		padding: 0.5rem 1rem;
 		flex-shrink: 0;
+		gap: 0.5rem;
 	}
 
 	.day-header h2 {
 		margin: 0;
 		font-size: 1.2rem;
-		flex: 1;
 		text-align: center;
+	}
+
+	.header-left {
+		display: flex;
+		justify-content: flex-start;
 	}
 
 	.nav-label {
@@ -153,8 +238,8 @@
 	.header-right {
 		display: flex;
 		align-items: center;
+		justify-content: flex-end;
 		gap: 0.3rem;
-		flex-shrink: 0;
 	}
 
 	.today-btn {
@@ -169,13 +254,6 @@
 		padding: 0.3rem 1rem;
 		flex-shrink: 0;
 		border-bottom: 1px solid var(--pico-muted-border-color);
-	}
-
-	.chip {
-		border-radius: 0.3rem;
-		padding: 0.15rem 0.5rem;
-		font-size: 0.8rem;
-		cursor: pointer;
 	}
 
 	.scroll-area {
@@ -223,68 +301,4 @@
 		border-top: 1px solid var(--pico-muted-border-color);
 	}
 
-	.event-block {
-		position: absolute;
-		box-sizing: border-box;
-		border-radius: 0.4rem;
-		padding: 0.15rem 0.5rem;
-		overflow: hidden;
-		font-size: 0.8rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
-		cursor: pointer;
-		border-left: 3px solid rgba(0,0,0,0.15);
-		/* small gutter between side-by-side columns */
-		padding-left: calc(0.5rem + 2px);
-		padding-right: calc(0.5rem + 2px);
-	}
-
-	/* Short events: vertically center the single title-row */
-	.event-block.compact {
-		justify-content: center;
-		padding: 0 0.4rem;
-	}
-
-	.ev-title-row {
-		display: flex;
-		align-items: baseline;
-		gap: 0.35rem;
-		overflow: hidden;
-		min-width: 0;
-	}
-
-	.event-block strong {
-		font-size: 0.85rem;
-		line-height: 1.2;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		flex: 1;
-		min-width: 0;
-	}
-
-	.ev-time {
-		font-size: 0.7rem;
-		opacity: 0.8;
-		flex-shrink: 0;
-	}
-
-	.ev-location {
-		font-size: 0.7rem;
-		opacity: 0.7;
-		overflow: hidden;
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 2;
-	}
-
-	.ev-notes {
-		font-size: 0.7rem;
-		opacity: 0.7;
-		overflow: hidden;
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 3;
-	}
 </style>

@@ -30,9 +30,8 @@ const EVENT_COLORS: Record<string, { bg: string; fg: string }> = {
 const DEFAULT_COLOR = { bg: 'var(--pico-primary-background)', fg: 'var(--pico-primary-inverse)' };
 
 export function eventColor(ev: CalendarEvent): { bg: string; fg: string } {
-	// Per-event colorId overrides everything
+	// Prefer the event colour first to keep the original Google Calendar palette.
 	if (ev.colorId && EVENT_COLORS[ev.colorId]) return EVENT_COLORS[ev.colorId];
-	// Fall back to the calendar's own colour if the backend provided it
 	if (ev.calendarColor) {
 		return { bg: ev.calendarColor, fg: ev.calendarForeground ?? '#ffffff' };
 	}
@@ -91,19 +90,32 @@ export interface CounterState {
 	today: number;
 }
 
+async function readJsonOrThrow<T>(res: Response, context: string): Promise<T> {
+	const contentType = res.headers.get('content-type') ?? '';
+	if (!res.ok) {
+		const body = await res.text().catch(() => '');
+		const snippet = body.slice(0, 200).replace(/\s+/g, ' ').trim();
+		throw new Error(`${context}: ${res.status} ${res.statusText}${snippet ? ` — ${snippet}` : ''}`);
+	}
+	if (!contentType.includes('application/json')) {
+		const body = await res.text().catch(() => '');
+		const snippet = body.slice(0, 200).replace(/\s+/g, ' ').trim();
+		throw new Error(`${context}: expected JSON but got '${contentType || 'unknown'}'${snippet ? ` — ${snippet}` : ''}`);
+	}
+	return res.json() as Promise<T>;
+}
+
 export async function fetchEvents(min?: Date, max?: Date, signal?: AbortSignal): Promise<CalendarEvent[]> {
 	const url = new URL(`${BASE}/api/events`, window.location.href);
 	if (min) url.searchParams.set('min', min.toISOString());
 	if (max) url.searchParams.set('max', max.toISOString());
 	const res = await fetch(url.toString(), { signal });
-	if (!res.ok) throw new Error(`Failed to fetch events: ${res.status}`);
-	return res.json();
+	return readJsonOrThrow<CalendarEvent[]>(res, 'Failed to fetch events');
 }
 
 export async function fetchWeather(): Promise<WeatherRecord> {
 	const res = await fetch(`${BASE}/api/weather`);
-	if (!res.ok) throw new Error(`Failed to fetch weather: ${res.status}`);
-	return res.json();
+	return readJsonOrThrow<WeatherRecord>(res, 'Failed to fetch weather');
 }
 
 export async function refreshWeather(): Promise<void> {
@@ -113,8 +125,7 @@ export async function refreshWeather(): Promise<void> {
 
 export async function fetchLists(): Promise<TodoList[]> {
 	const res = await fetch(`${BASE}/api/lists`);
-	if (!res.ok) throw new Error(`Failed to fetch lists: ${res.status}`);
-	return res.json();
+	return readJsonOrThrow<TodoList[]>(res, 'Failed to fetch lists');
 }
 
 export async function createList(body: {
@@ -130,15 +141,13 @@ export async function createList(body: {
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(body),
 	});
-	if (!res.ok) throw new Error(`Failed to create list: ${res.status}`);
-	return res.json();
-}
+	return readJsonOrThrow<TodoList>(res, 'Failed to create list');
+	}
 
 export async function fetchCounter(counterId: number): Promise<CounterState> {
 	const res = await fetch(`${BASE}/api/counters/${counterId}`);
-	if (!res.ok) throw new Error(`Failed to fetch counter: ${res.status}`);
-	return res.json();
-}
+	return readJsonOrThrow<CounterState>(res, 'Failed to fetch counter');
+	}
 
 export async function incCounter(counterId: number, delta: number): Promise<{ ok: boolean; value: number; today: number }> {
 	const res = await fetch(`${BASE}/api/counters/${counterId}/inc`, {
@@ -146,8 +155,7 @@ export async function incCounter(counterId: number, delta: number): Promise<{ ok
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ delta })
 	});
-	if (!res.ok) throw new Error(`Failed to update counter: ${res.status}`);
-	return res.json();
+	return readJsonOrThrow<{ ok: boolean; value: number; today: number }>(res, 'Failed to update counter');
 }
 
 export async function deleteList(id: number): Promise<void> {
@@ -157,8 +165,7 @@ export async function deleteList(id: number): Promise<void> {
 
 export async function fetchItems(listId: number): Promise<TodoItem[]> {
 	const res = await fetch(`${BASE}/api/lists/${listId}/items`);
-	if (!res.ok) throw new Error(`Failed to fetch items: ${res.status}`);
-	return res.json();
+	return readJsonOrThrow<TodoItem[]>(res, 'Failed to fetch items');
 }
 
 export async function createItem(listId: number, text: string): Promise<TodoItem> {
@@ -167,8 +174,7 @@ export async function createItem(listId: number, text: string): Promise<TodoItem
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ text }),
 	});
-	if (!res.ok) throw new Error(`Failed to create item: ${res.status}`);
-	return res.json();
+	return readJsonOrThrow<TodoItem>(res, 'Failed to create item');
 }
 
 export async function patchItem(id: number, patch: { text?: string; done?: boolean }): Promise<void> {

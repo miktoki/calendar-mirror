@@ -23,15 +23,26 @@ rm -rf "${DEST}"
 mkdir -p "${DEST}"
 
 # ── Frontend ─────────────────────────────────────────────────────────────────
-echo "→ Building SvelteKit frontend..."
+# echo "→ Building SvelteKit frontend..."
 cd "${REPO_ROOT}/frontend"
-bun install
-bun run build
+bun install --silent
+set +e
+bun run --silent build -l error -- --logLevel error 2>&1 | grep -Ev \
+    -e '^Run npm run preview' \
+    -e '^> Using @sveltejs/adapter-static' \
+    -e '^\s*Wrote site to "build"' \
+    -e '^\s*✔ done' \
+    -e '^\s*$'
+build_rc=${PIPESTATUS[0]}
+set -e
+if [[ ${build_rc} -ne 0 ]]; then
+    exit "${build_rc}"
+fi
 mkdir -p "${DEST}/frontend"
 cp -r build/. "${DEST}/frontend/"
 
 # ── Backend ──────────────────────────────────────────────────────────────────
-echo "→ Copying Flask backend..."
+# echo "→ Copying FastAPI backend..."
 mkdir -p "${DEST}/backend"
 cp "${REPO_ROOT}/backend/app.py"         "${DEST}/backend/"
 cp "${REPO_ROOT}/backend/pyproject.toml" "${DEST}/backend/"
@@ -42,21 +53,21 @@ if [[ -f "${REPO_ROOT}/backend/.env" ]]; then
 fi
 
 # ── Helper scripts ────────────────────────────────────────────────────────────
-echo "→ Copying helper scripts..."
+# echo "→ Copying helper scripts..."
 mkdir -p "${DEST}/scripts"
 cp "${REPO_ROOT}/scripts/fetch_google_api_key.py" "${DEST}/scripts/"
 cp "${REPO_ROOT}/scripts/setup-pi.sh"             "${DEST}/scripts/"
 
 # ── Caddy config ─────────────────────────────────────────────────────────────
-echo "→ Copying Caddyfile..."
+# echo "→ Copying Caddyfile..."
 cp "${REPO_ROOT}/Caddyfile" "${DEST}/Caddyfile"
 
 # ── Systemd units ────────────────────────────────────────────────────────────
-echo "→ Copying systemd units..."
+# echo "→ Copying systemd units..."
 mkdir -p "${DEST}/scripts/systemd"
 cp "${REPO_ROOT}/scripts/systemd/"*.service "${DEST}/scripts/systemd/"
 
-echo ""
-echo "✔ Done. Deploy to the Pi with:"
-echo "  rsync -av '${DEST}/' pi@raspberrypi.local:/home/pi/rpi-calendar/"
-echo "  Then on the Pi: bash /home/pi/rpi-calendar/scripts/setup-pi.sh"
+# echo ""
+# echo "✔ Done. Deploy to the Pi with:"
+# echo "  rsync -av '${DEST}/' pi@raspberrypi.local:/home/pi/rpi-calendar/"
+# echo "  Then on the Pi: bash /home/pi/rpi-calendar/scripts/setup-pi.sh"

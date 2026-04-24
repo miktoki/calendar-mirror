@@ -1,0 +1,289 @@
+$ vite build
+01:00:48 [vite-plugin-svelte] src/lib/components/DayView.svelte:136:2 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+134:       <button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -1))}>‹</button>
+135:     </div>
+136:     <h2 class="nav-label" on:click={() => currentView.set('week')}>{formatDate(day)}</h2>
+                                                                                              ^
+137:     <div class="header-right">
+138:       {#if !isToday}
+01:00:48 [vite-plugin-svelte] src/lib/components/DayView.svelte:136:2 Non-interactive element `<h2>` should not be assigned mouse or keyboard event listeners
+https://svelte.dev/e/a11y_no_noninteractive_element_interactions
+134:       <button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -1))}>‹</button>
+135:     </div>
+136:     <h2 class="nav-label" on:click={() => currentView.set('week')}>{formatDate(day)}</h2>
+                                                                                              ^
+137:     <div class="header-right">
+138:       {#if !isToday}
+01:00:48 [vite-plugin-svelte] src/lib/components/WeekView.svelte:89:2 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+87:   <header class="week-header">
+88:     <button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -7))}>‹</button>
+89:     <span class="period nav-label" on:click={() => currentView.set('month')}>{formatMonthYear(weekStart)}</span>
+                                                                                                                    ^
+90:     <div class="header-right">
+91:       {#if !isCurrentWeek}
+01:00:48 [vite-plugin-svelte] src/lib/components/WeekView.svelte:89:2 `<span>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+87:   <header class="week-header">
+88:     <button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -7))}>‹</button>
+89:     <span class="period nav-label" on:click={() => currentView.set('month')}>{formatMonthYear(weekStart)}</span>
+                                                                                                                    ^
+90:     <div class="header-right">
+91:       {#if !isCurrentWeek}
+01:00:48 [vite-plugin-svelte] src/lib/components/WeekView.svelte:101:3 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+ 99:     <div class="time-col-header"></div>
+100:     {#each daysWithWeather as { day, series }}
+101:       <div
+               ^
+102:         class="day-col-header"
+103:         class:today={isSameDay(day, today)}
+01:00:48 [vite-plugin-svelte] src/lib/components/WeekView.svelte:101:3 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+ 99:     <div class="time-col-header"></div>
+100:     {#each daysWithWeather as { day, series }}
+101:       <div
+               ^
+102:         class="day-col-header"
+103:         class:today={isSameDay(day, today)}
+01:00:48 [vite-plugin-svelte] src/lib/components/WeekView.svelte:117:5 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+115:         {#each eventsOnDay(events, day).filter(isAllDay) as ev}
+116:           {@const c = eventColor(ev)}
+117:           <span class="chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>{ev.summary}</span>
+                                                                                                                                                   ^
+118:         {/each}
+119:       </div>
+01:00:48 [vite-plugin-svelte] src/lib/components/WeekView.svelte:117:5 `<span>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+115:         {#each eventsOnDay(events, day).filter(isAllDay) as ev}
+116:           {@const c = eventColor(ev)}
+117:           <span class="chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>{ev.summary}</span>
+                                                                                                                                                   ^
+118:         {/each}
+119:       </div>
+01:00:48 [vite-plugin-svelte] src/lib/components/WeekView.svelte:141:6 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+139:             {@const h = heightPx(ev)}
+140:             {@const compact = h < 32}
+141:             <div
+                     ^
+142:               class="event-block"
+143:               class:compact
+01:00:48 [vite-plugin-svelte] src/lib/components/WeekView.svelte:141:6 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+139:             {@const h = heightPx(ev)}
+140:             {@const compact = h < 32}
+141:             <div
+                     ^
+142:               class="event-block"
+143:               class:compact
+01:00:48 [vite-plugin-svelte] src/lib/components/MonthView.svelte:117:3 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+115:     {#each { length: 6 } as _, rowIdx}
+116:       {@const rowStart = cellsWithWeather[rowIdx * 7].day}
+117:       <div
+               ^
+118:         class="week-num"
+119:         on:click={() => { anchor = rowStart; currentView.set('week'); }}
+01:00:48 [vite-plugin-svelte] src/lib/components/MonthView.svelte:117:3 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+115:     {#each { length: 6 } as _, rowIdx}
+116:       {@const rowStart = cellsWithWeather[rowIdx * 7].day}
+117:       <div
+               ^
+118:         class="week-num"
+119:         on:click={() => { anchor = rowStart; currentView.set('week'); }}
+01:00:48 [vite-plugin-svelte] src/lib/components/MonthView.svelte:125:4 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+123:         {@const visible = dayEvents.length > maxVisible ? dayEvents.slice(0, maxVisible - 1) : dayEvents}
+124:         {@const overflow = dayEvents.length - visible.length}
+125:         <div
+                 ^
+126:           class="cal-cell"
+127:           class:other-month={day.getMonth() !== currentMonth}
+01:00:48 [vite-plugin-svelte] src/lib/components/MonthView.svelte:125:4 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+123:         {@const visible = dayEvents.length > maxVisible ? dayEvents.slice(0, maxVisible - 1) : dayEvents}
+124:         {@const overflow = dayEvents.length - visible.length}
+125:         <div
+                 ^
+126:           class="cal-cell"
+127:           class:other-month={day.getMonth() !== currentMonth}
+01:00:48 [vite-plugin-svelte] src/lib/components/MonthView.svelte:138:7 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+136:             {#each visible as ev}
+137:               {@const c = eventColor(ev)}
+138:               <div class="ev-chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>
+                         ^
+139:                 {#if !isAllDay(ev)}
+140:                   <span class="ev-time">{formatTime(eventStart(ev))}</span>
+01:00:48 [vite-plugin-svelte] src/lib/components/MonthView.svelte:138:7 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+136:             {#each visible as ev}
+137:               {@const c = eventColor(ev)}
+138:               <div class="ev-chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>
+                         ^
+139:                 {#if !isAllDay(ev)}
+140:                   <span class="ev-time">{formatTime(eventStart(ev))}</span>
+01:00:48 [vite-plugin-svelte] src/lib/components/EventPopup.svelte:31:1 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+29: 
+30: {#if event}
+31:   <div class="backdrop" on:click={onBackdropClick}>
+            ^
+32:     <div class="popup">
+33:       <div class="popup-header">
+01:00:48 [vite-plugin-svelte] src/lib/components/EventPopup.svelte:31:1 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+29: 
+30: {#if event}
+31:   <div class="backdrop" on:click={onBackdropClick}>
+            ^
+32:     <div class="popup">
+33:       <div class="popup-header">
+01:00:50 [vite-plugin-svelte] src/lib/components/DayView.svelte:136:2 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+134:       <button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -1))}>‹</button>
+135:     </div>
+136:     <h2 class="nav-label" on:click={() => currentView.set('week')}>{formatDate(day)}</h2>
+                                                                                              ^
+137:     <div class="header-right">
+138:       {#if !isToday}
+01:00:50 [vite-plugin-svelte] src/lib/components/DayView.svelte:136:2 Non-interactive element `<h2>` should not be assigned mouse or keyboard event listeners
+https://svelte.dev/e/a11y_no_noninteractive_element_interactions
+134:       <button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -1))}>‹</button>
+135:     </div>
+136:     <h2 class="nav-label" on:click={() => currentView.set('week')}>{formatDate(day)}</h2>
+                                                                                              ^
+137:     <div class="header-right">
+138:       {#if !isToday}
+01:00:50 [vite-plugin-svelte] src/lib/components/WeekView.svelte:89:2 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+87:   <header class="week-header">
+88:     <button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -7))}>‹</button>
+89:     <span class="period nav-label" on:click={() => currentView.set('month')}>{formatMonthYear(weekStart)}</span>
+                                                                                                                    ^
+90:     <div class="header-right">
+91:       {#if !isCurrentWeek}
+01:00:50 [vite-plugin-svelte] src/lib/components/WeekView.svelte:89:2 `<span>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+87:   <header class="week-header">
+88:     <button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -7))}>‹</button>
+89:     <span class="period nav-label" on:click={() => currentView.set('month')}>{formatMonthYear(weekStart)}</span>
+                                                                                                                    ^
+90:     <div class="header-right">
+91:       {#if !isCurrentWeek}
+01:00:50 [vite-plugin-svelte] src/lib/components/WeekView.svelte:101:3 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+ 99:     <div class="time-col-header"></div>
+100:     {#each daysWithWeather as { day, series }}
+101:       <div
+               ^
+102:         class="day-col-header"
+103:         class:today={isSameDay(day, today)}
+01:00:50 [vite-plugin-svelte] src/lib/components/WeekView.svelte:101:3 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+ 99:     <div class="time-col-header"></div>
+100:     {#each daysWithWeather as { day, series }}
+101:       <div
+               ^
+102:         class="day-col-header"
+103:         class:today={isSameDay(day, today)}
+01:00:50 [vite-plugin-svelte] src/lib/components/WeekView.svelte:117:5 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+115:         {#each eventsOnDay(events, day).filter(isAllDay) as ev}
+116:           {@const c = eventColor(ev)}
+117:           <span class="chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>{ev.summary}</span>
+                                                                                                                                                   ^
+118:         {/each}
+119:       </div>
+01:00:50 [vite-plugin-svelte] src/lib/components/WeekView.svelte:117:5 `<span>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+115:         {#each eventsOnDay(events, day).filter(isAllDay) as ev}
+116:           {@const c = eventColor(ev)}
+117:           <span class="chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>{ev.summary}</span>
+                                                                                                                                                   ^
+118:         {/each}
+119:       </div>
+01:00:50 [vite-plugin-svelte] src/lib/components/WeekView.svelte:141:6 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+139:             {@const h = heightPx(ev)}
+140:             {@const compact = h < 32}
+141:             <div
+                     ^
+142:               class="event-block"
+143:               class:compact
+01:00:50 [vite-plugin-svelte] src/lib/components/WeekView.svelte:141:6 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+139:             {@const h = heightPx(ev)}
+140:             {@const compact = h < 32}
+141:             <div
+                     ^
+142:               class="event-block"
+143:               class:compact
+01:00:50 [vite-plugin-svelte] src/lib/components/MonthView.svelte:117:3 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+115:     {#each { length: 6 } as _, rowIdx}
+116:       {@const rowStart = cellsWithWeather[rowIdx * 7].day}
+117:       <div
+               ^
+118:         class="week-num"
+119:         on:click={() => { anchor = rowStart; currentView.set('week'); }}
+01:00:50 [vite-plugin-svelte] src/lib/components/MonthView.svelte:117:3 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+115:     {#each { length: 6 } as _, rowIdx}
+116:       {@const rowStart = cellsWithWeather[rowIdx * 7].day}
+117:       <div
+               ^
+118:         class="week-num"
+119:         on:click={() => { anchor = rowStart; currentView.set('week'); }}
+01:00:50 [vite-plugin-svelte] src/lib/components/MonthView.svelte:125:4 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+123:         {@const visible = dayEvents.length > maxVisible ? dayEvents.slice(0, maxVisible - 1) : dayEvents}
+124:         {@const overflow = dayEvents.length - visible.length}
+125:         <div
+                 ^
+126:           class="cal-cell"
+127:           class:other-month={day.getMonth() !== currentMonth}
+01:00:50 [vite-plugin-svelte] src/lib/components/MonthView.svelte:125:4 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+123:         {@const visible = dayEvents.length > maxVisible ? dayEvents.slice(0, maxVisible - 1) : dayEvents}
+124:         {@const overflow = dayEvents.length - visible.length}
+125:         <div
+                 ^
+126:           class="cal-cell"
+127:           class:other-month={day.getMonth() !== currentMonth}
+01:00:50 [vite-plugin-svelte] src/lib/components/MonthView.svelte:138:7 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+136:             {#each visible as ev}
+137:               {@const c = eventColor(ev)}
+138:               <div class="ev-chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>
+                         ^
+139:                 {#if !isAllDay(ev)}
+140:                   <span class="ev-time">{formatTime(eventStart(ev))}</span>
+01:00:50 [vite-plugin-svelte] src/lib/components/MonthView.svelte:138:7 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+136:             {#each visible as ev}
+137:               {@const c = eventColor(ev)}
+138:               <div class="ev-chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>
+                         ^
+139:                 {#if !isAllDay(ev)}
+140:                   <span class="ev-time">{formatTime(eventStart(ev))}</span>
+01:00:50 [vite-plugin-svelte] src/lib/components/EventPopup.svelte:31:1 Visible, non-interactive elements with a click event must be accompanied by a keyboard event handler. Consider whether an interactive element such as `<button type="button">` or `<a>` might be more appropriate
+https://svelte.dev/e/a11y_click_events_have_key_events
+29: 
+30: {#if event}
+31:   <div class="backdrop" on:click={onBackdropClick}>
+            ^
+32:     <div class="popup">
+33:       <div class="popup-header">
+01:00:50 [vite-plugin-svelte] src/lib/components/EventPopup.svelte:31:1 `<div>` with a click handler must have an ARIA role
+https://svelte.dev/e/a11y_no_static_element_interactions
+29: 
+30: {#if event}
+31:   <div class="backdrop" on:click={onBackdropClick}>
+            ^
+32:     <div class="popup">
+33:       <div class="popup-header">

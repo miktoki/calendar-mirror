@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { CalendarEvent } from '$lib/api';
-	import { formatTime, formatDate, eventStart, eventEnd, isAllDay } from '$lib/dateUtils';
+	import { formatTime, formatDate, eventStart, eventEnd, isAllDay, isSameDay, plainTextFromHtml } from '$lib/dateUtils';
 	import { createEventDispatcher } from 'svelte';
 
 	export let event: CalendarEvent | null = null;
@@ -22,6 +22,8 @@
 	$: start = event ? eventStart(event) : null;
 	$: end = event ? eventEnd(event) : null;
 	$: allDay = event ? isAllDay(event) : false;
+	$: isMultiDay = start && end && !isSameDay(start, end);
+	$: description = plainTextFromHtml(event?.description);
 </script>
 
 <svelte:window on:keydown={onKeydown} />
@@ -34,15 +36,26 @@
 				<button class="close-btn" on:click={close} aria-label="Close">✕</button>
 			</div>
 			<div class="popup-body">
-				<div class="detail-row">
-					<span class="detail-label">Date</span>
-					<span>{start ? formatDate(start) : ''}</span>
-				</div>
-				{#if !allDay && start && end}
+				{#if isMultiDay && start && end}
 					<div class="detail-row">
-						<span class="detail-label">Time</span>
-						<span>{formatTime(start)} – {formatTime(end)}</span>
+						<span class="detail-label">From</span>
+						<span>{formatDate(start)} {formatTime(start)}</span>
 					</div>
+					<div class="detail-row">
+						<span class="detail-label">To</span>
+						<span>{formatDate(end)} {formatTime(end)}</span>
+					</div>
+				{:else}
+					<div class="detail-row">
+						<span class="detail-label">Date</span>
+						<span>{start ? formatDate(start) : ''}</span>
+					</div>
+					{#if !allDay && start && end}
+						<div class="detail-row">
+							<span class="detail-label">Time</span>
+							<span>{formatTime(start)} – {formatTime(end)}</span>
+						</div>
+					{/if}
 				{/if}
 				{#if event.location}
 					<div class="detail-row">
@@ -50,10 +63,10 @@
 						<span>{event.location}</span>
 					</div>
 				{/if}
-				{#if event.description}
+				{#if description}
 					<div class="detail-row description">
 						<span class="detail-label">Notes</span>
-						<div class="description-text">{@html event.description}</div>
+						<div class="description-text">{description}</div>
 					</div>
 				{/if}
 			</div>
@@ -138,35 +151,6 @@
 		word-break: break-word;
 		font-size: 0.85rem;
 		line-height: 1.5;
-	}
-
-	.description-text :global(a) {
-		color: var(--pico-primary);
-	}
-
-	.description-text :global(b),
-	.description-text :global(strong) {
-		font-weight: 600;
-	}
-
-	.description-text :global(i),
-	.description-text :global(em) {
-		font-style: italic;
-	}
-
-	.description-text :global(ul),
-	.description-text :global(ol) {
-		padding-left: 1.2rem;
-		margin: 0.25rem 0;
-	}
-
-	.description-text :global(p) {
-		margin: 0.2rem 0;
-	}
-
-	.description-text :global(br) {
-		display: block;
-		content: '';
-		margin-top: 0.2rem;
+		white-space: pre-line;
 	}
 </style>

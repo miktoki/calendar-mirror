@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
 	import { currentView, type View } from '$lib/stores';
 
 	const views: { id: View; label: string; icon: string }[] = [
@@ -10,16 +11,66 @@
 	];
 
 	let open = false;
+	let navEl: HTMLElement | null = null;
+	let toggleEl: HTMLButtonElement | null = null;
+	const shortcutMap: Record<string, View> = {
+		'1': 'day',
+		'2': 'week',
+		'3': 'month',
+		'4': 'weather',
+		'5': 'todo',
+		d: 'day',
+		w: 'week',
+		m: 'month',
+		h: 'weather',
+		t: 'todo',
+	};
 
-	function select(v: View) {
-		currentView.set(v);
+	function closeSwitcher() {
 		open = false;
 	}
+
+	function select(v: View) {
+		closeSwitcher();
+		currentView.set(v);
+	}
+
+	function openSwitcher() {
+		open = true;
+	}
+
+	function toggleSwitcher() {
+		open = !open;
+	}
+
+	function onWindowKeydown(event: KeyboardEvent) {
+		if (!open || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+		const target = event.target;
+		if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+		const shortcut = shortcutMap[event.key.toLowerCase()];
+		if (!shortcut) return;
+		event.preventDefault();
+		select(shortcut);
+	}
+
+	onMount(() => {
+		const handleOpen = () => openSwitcher();
+		window.addEventListener('view-switcher:open', handleOpen);
+		window.addEventListener('keydown', onWindowKeydown);
+		return () => {
+			window.removeEventListener('view-switcher:open', handleOpen);
+			window.removeEventListener('keydown', onWindowKeydown);
+		};
+	});
+
+	onDestroy(() => {
+		navEl = null;
+	});
 </script>
 
 <div class="switcher" class:open>
 	{#if open}
-		<nav>
+		<nav bind:this={navEl}>
 			{#each views as v}
 				<button
 					class="outline"
@@ -35,8 +86,9 @@
 	{/if}
 
 	<button
+		bind:this={toggleEl}
 		class="toggle outline"
-		on:click={() => (open = !open)}
+		on:click={toggleSwitcher}
 		aria-label="Switch view"
 	>
 		☰

@@ -31,14 +31,14 @@ BACKGROUND_COLOR = "#4285f4"
 
 # Distinct palette for assigning per-calendar colours when the API can't provide them
 _CALENDAR_PALETTE = [
-    ("#ab47bc", "#ffffff"),  # purple
-    ("#0f9d58", "#ffffff"),  # Google green
-    ("#ff7043", "#ffffff"),  # deep orange
-    ("#5c6bc0", "#ffffff"),  # indigo
-    ("#00acc1", "#ffffff"),  # cyan
     ("#4285f4", "#ffffff"),  # Google blue
+    ("#0f9d58", "#ffffff"),  # Google green
     ("#db4437", "#ffffff"),  # Google red
     ("#f4b400", "#1a1a2e"),  # Google yellow
+    ("#ab47bc", "#ffffff"),  # purple
+    ("#00acc1", "#ffffff"),  # cyan
+    ("#ff7043", "#ffffff"),  # deep orange
+    ("#5c6bc0", "#ffffff"),  # indigo
 ]
 
 def _calendar_color(cal_id: str) -> tuple[str, str]:
@@ -52,15 +52,20 @@ MET_NO_LAT = os.environ.get("MET_NO_LAT", "59.9139")
 MET_NO_LON = os.environ.get("MET_NO_LON", "10.7522")
 MET_NO_USER_AGENT = os.environ.get("MET_NO_USER_AGENT", "rpi-calendar/1.0 contact@example.com")
 
-DB_PATH = os.environ.get("DB_PATH", "rpi-calendar.db")
+DB_PATH = os.environ.get("DB_PATH", "weather.db")
 WEATHER_TTL_SECONDS = 3600
 
 
 def db_connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=2)
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def _default_event_time_min(now: datetime) -> str:
+    now_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    prev_month_start = (now_month - timedelta(days=1)).replace(day=1)
+    return prev_month_start.isoformat()
 
 
 def db_init():
@@ -85,11 +90,6 @@ def db_init():
             CREATE TABLE IF NOT EXISTS todo_lists (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 name       TEXT NOT NULL,
-                list_type  TEXT NOT NULL DEFAULT 'todo',
-                reset_kind TEXT NOT NULL DEFAULT 'none',
-                week_ends_on INTEGER NOT NULL DEFAULT 0,
-                counter_mode TEXT NOT NULL DEFAULT 'normal',
-                counter_initial INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         """)
@@ -136,7 +136,7 @@ async def fetch_events_from_google(
         )
 
     now = datetime.now(timezone.utc)
-    time_min = time_min_override or (now - timedelta(days=30)).isoformat()
+    time_min = time_min_override or _default_event_time_min(now)
     time_max = time_max_override or (now + timedelta(days=150)).isoformat()
     is_default_range = time_min_override is None
 
@@ -310,7 +310,7 @@ async def events(
 
     if min or max:
         now = datetime.now(timezone.utc)
-        time_min = min or (now - timedelta(days=30)).isoformat()
+        time_min = min or _default_event_time_min(now)
         time_max = max or (now + timedelta(days=150)).isoformat()
         cached = _filter_events(db_events, time_min, time_max)
         asyncio.create_task(fetch_events_from_google(
@@ -351,76 +351,10 @@ async def weather():
     return {"fetched_at": row["fetched_at"], "forecast": json.loads(row["forecast"])}
 
 
-def _parse_dt(s: str | None) -> datetime | None:
-    if not s:
-        return None
-    try:
-        # Accept both naive and tz-aware ISO strings
-        dt = datetime.fromisoformat(s)
-        return dt
-    except Exception:
-        return None
-
-
-def _last_reset_at(reset_kind: str, week_ends_on: int, now: datetime) -> datetime:
-    """Compute the most recent reset moment in local server time.
-
-    Weekly: reset at local midnight starting the day AFTER `week_ends_on`.
-    week_ends_on follows Python's getDay style: 0=Sunday, 6=Saturday.
-    """
-    local_now = now.replace(tzinfo=None)
-    start_today = datetime(local_now.year, local_now.month, local_now.day)
-
-    if reset_kind == "daily":
-        return start_today
-    if reset_kind == "weekly":
-        # Map Python weekday (Mon=0..Sun=6) to desired numbering (Sun=0..Sat=6)
-        # desired = (python + 1) % 7
-        desired_today = (start_today.weekday() + 1) % 7
-        # We reset on the day after `week_ends_on`.
-        reset_day = (week_ends_on + 1) % 7
-        days_since_reset = (desired_today - reset_day) % 7
-        return start_today - timedelta(days=days_since_reset)
-    if reset_kind == "monthly":
-        return datetime(local_now.year, local_now.month, 1)
-    if reset_kind == "yearly":
-        return datetime(local_now.year, 1, 1)
-    # none
-    return datetime.min
-
-
-def _local_day_str(now: datetime) -> str:
-    n = now.replace(tzinfo=None)
-    return f"{n.year:04d}-{n.month:02d}-{n.day:02d}"
-
-
-def _counter_sum_since_reset(conn: sqlite3.Connection, counter_id: int, reset_at: datetime) -> int:
-    # We only have per-day rows, so sum days >= reset date.
-    reset_day = f"{reset_at.year:04d}-{reset_at.month:02d}-{reset_at.day:02d}"
-    row = conn.execute(
-        "SELECT COALESCE(SUM(amount), 0) AS s FROM counter_daily WHERE counter_id = ? AND day >= ?",
-        (counter_id, reset_day),
-    ).fetchone()
-    return int(row["s"] or 0)
-
-
-def _counter_today_amount(conn: sqlite3.Connection, counter_id: int, today: str) -> int:
-    row = conn.execute(
-        "SELECT amount FROM counter_daily WHERE counter_id = ? AND day = ?",
-        (counter_id, today),
-    ).fetchone()
-    return int(row["amount"]) if row else 0
-
-
 # --- Todo lists ---
 
 class ListCreate(BaseModel):
     name: str
-    list_type: str | None = None  # todo | counter
-    reset_kind: str | None = None  # none | daily | weekly | monthly | yearly
-    week_ends_on: int | None = None  # 0=Sun..6=Sat
-    counter_mode: str | None = None  # normal | negative
-    counter_initial: int | None = None
 
 class ItemCreate(BaseModel):
     text: str
@@ -429,10 +363,6 @@ class ItemPatch(BaseModel):
     text: str | None = None
     done: bool | None = None
     sort_order: int | None = None
-
-
-class CounterDelta(BaseModel):
-    delta: int
 
 
 @app.get("/api/lists")
@@ -444,19 +374,9 @@ async def get_lists():
 
 @app.post("/api/lists", status_code=201)
 async def create_list(body: ListCreate):
-    list_type = body.list_type or "todo"
-    reset_kind = body.reset_kind or "none"
-    week_ends_on = 0 if body.week_ends_on is None else int(body.week_ends_on)
-    counter_mode = body.counter_mode or "normal"
-    counter_initial = 0 if body.counter_initial is None else int(body.counter_initial)
     with db_connect() as conn:
         cur = conn.execute(
-            """
-            INSERT INTO todo_lists (name, list_type, reset_kind, week_ends_on, counter_mode, counter_initial)
-            VALUES (?, ?, ?, ?, ?, ?)
-            RETURNING *
-            """,
-            (body.name, list_type, reset_kind, week_ends_on, counter_mode, counter_initial),
+            "INSERT INTO todo_lists (name) VALUES (?) RETURNING *", (body.name,)
         )
         row = cur.fetchone()
     return dict(row)
@@ -471,27 +391,12 @@ async def delete_list(list_id: int):
 
 @app.get("/api/lists/{list_id}/items")
 async def get_items(list_id: int):
-    now = datetime.now()
     with db_connect() as conn:
-        list_row = conn.execute(
-            "SELECT reset_kind, week_ends_on FROM todo_lists WHERE id = ?",
-            (list_id,),
-        ).fetchone()
-        if not list_row:
-            raise HTTPException(status_code=404, detail="list not found")
-        reset_at = _last_reset_at(list_row["reset_kind"], int(list_row["week_ends_on"]), now)
         rows = conn.execute(
             "SELECT * FROM todo_items WHERE list_id = ? ORDER BY sort_order, created_at",
             (list_id,)
         ).fetchall()
-
-    out = []
-    for r in rows:
-        d = dict(r)
-        checked = _parse_dt(d.get("checked_at"))
-        d["done"] = 1 if (checked and checked >= reset_at) else 0
-        out.append(d)
-    return out
+    return [dict(r) for r in rows]
 
 
 @app.post("/api/lists/{list_id}/items", status_code=201)
@@ -510,18 +415,8 @@ async def patch_item(item_id: int, body: ItemPatch):
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     if not fields:
         raise HTTPException(status_code=400, detail="nothing to update")
-
-    # If `done` is patched, store a timestamp instead of a sticky boolean.
     if "done" in fields:
-        done_bool = bool(fields.pop("done"))
-        fields.pop("done", None)
-        fields["checked_at"] = datetime.now(timezone.utc).isoformat() if done_bool else None
-
-    # Keep legacy `done` column in sync for older clients (best effort)
-    if "checked_at" in fields:
-        fields["done"] = 1 if fields["checked_at"] else 0
-
-    # SQLite needs explicit NULL binding when checked_at is None.
+        fields["done"] = int(fields["done"])
     set_clause = ", ".join(f"{k} = ?" for k in fields)
     with db_connect() as conn:
         conn.execute(
@@ -529,79 +424,6 @@ async def patch_item(item_id: int, body: ItemPatch):
             (*fields.values(), item_id),
         )
     return {"ok": True}
-
-
-# --- Counters ---
-
-@app.get("/api/counters/{counter_id}")
-async def get_counter(counter_id: int):
-    now = datetime.now()
-    today = _local_day_str(now)
-    with db_connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM todo_lists WHERE id = ?",
-            (counter_id,),
-        ).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="counter not found")
-        if row["list_type"] != "counter":
-            raise HTTPException(status_code=400, detail="not a counter")
-        reset_at = _last_reset_at(row["reset_kind"], int(row["week_ends_on"]), now)
-        total = _counter_sum_since_reset(conn, counter_id, reset_at)
-        today_amt = _counter_today_amount(conn, counter_id, today)
-
-    mode = row["counter_mode"]
-    initial = int(row["counter_initial"] or 0)
-    value = (initial - total) if mode == "negative" else total
-    return {
-        "counter_id": counter_id,
-        "reset_kind": row["reset_kind"],
-        "week_ends_on": row["week_ends_on"],
-        "mode": mode,
-        "initial": initial,
-        "value": value,
-        "today": today_amt,
-    }
-
-
-@app.post("/api/counters/{counter_id}/inc")
-async def counter_inc(counter_id: int, body: CounterDelta):
-    now = datetime.now()
-    today = _local_day_str(now)
-    delta = int(body.delta)
-    with db_connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM todo_lists WHERE id = ?",
-            (counter_id,),
-        ).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="counter not found")
-        if row["list_type"] != "counter":
-            raise HTTPException(status_code=400, detail="not a counter")
-
-        existing = _counter_today_amount(conn, counter_id, today)
-        new_val = existing + delta
-        if new_val < 0:
-            # Enforce monotonic per day (can't go below 0 for the day)
-            new_val = 0
-
-        conn.execute(
-            """
-            INSERT INTO counter_daily (counter_id, day, amount)
-            VALUES (?, ?, ?)
-            ON CONFLICT(counter_id, day) DO UPDATE SET amount = excluded.amount
-            """,
-            (counter_id, today, new_val),
-        )
-
-        reset_at = _last_reset_at(row["reset_kind"], int(row["week_ends_on"]), now)
-        total = _counter_sum_since_reset(conn, counter_id, reset_at)
-        today_amt = new_val
-
-    mode = row["counter_mode"]
-    initial = int(row["counter_initial"] or 0)
-    value = (initial - total) if mode == "negative" else total
-    return {"ok": True, "value": value, "today": today_amt}
 
 
 @app.delete("/api/items/{item_id}", status_code=204)
