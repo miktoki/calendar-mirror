@@ -80,9 +80,19 @@
 		}
 	}
 
+	function resetMarker(kind?: TodoList['reset_kind']): string {
+		switch (kind) {
+			case 'daily': return 'D';
+			case 'weekly': return 'W';
+			case 'monthly': return 'M';
+			case 'yearly': return 'Y';
+			default: return '';
+		}
+	}
+
 	function typeTitle(list: TodoList): string {
-		if ((list.list_type ?? 'todo') !== 'counter') return '';
-		const mode = list.counter_mode === 'negative' ? 'Negative counter' : 'Counter';
+		if ((list.list_type ?? 'todo') !== 'counter') return 'Todo list';
+		const mode = list.counter_mode === 'negative' ? 'Countdown' : 'Counter';
 		const reset = list.reset_kind && list.reset_kind !== 'none' ? ` • ${resetTitle(list.reset_kind)}` : '';
 		return `${mode}${reset}`;
 	}
@@ -271,28 +281,24 @@
 				on:click={() => selectList(list.id)}
 			>
 				<span class="list-name">{list.name}</span>
-				{#if list.reset_kind && list.reset_kind !== 'none' && (list.list_type ?? 'todo') !== 'counter'}
-					<span class="badge" title={resetTitle(list.reset_kind)}>
-						{#if list.reset_kind === 'daily'}
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 2h12v2H6V2zm0 18h12v2H6v-2zM7 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zm0 2v8h10V8H7z"/></svg>
-						{:else if list.reset_kind === 'weekly'}
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2v2H5a2 2 0 0 0-2 2v2h18V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm14 8H3v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V10zm-2 3v2H5v-2h14z"/></svg>
-						{:else if list.reset_kind === 'monthly'}
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M7 2v2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2V2h-2v2H9V2H7zm12 6H5v12h14V8z"/></svg>
-						{:else if list.reset_kind === 'yearly'}
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l2.4 6.2L21 9l-5 4.2L17.2 20 12 16.8 6.8 20 8 13.2 3 9l6.6-.8L12 2z"/></svg>
-						{/if}
-					</span>
-				{/if}
-				{#if (list.list_type ?? 'todo') === 'counter'}
+				<span class="list-meta">
 					<span class="badge" title={typeTitle(list)}>
-						{#if list.counter_mode === 'negative'}
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>
+						{#if (list.list_type ?? 'todo') === 'counter'}
+							{#if list.counter_mode === 'negative'}
+								<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 4h6M9 20h6M8 6h8M8 18h8M9 6c0 3 3 3.8 3 6s-3 3-3 6M15 6c0 3-3 3.8-3 6s3 3 3 6"/></svg>
+							{:else}
+								<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M6.5 7v10M10.5 7v10M14.5 7v10M18.5 7v10M5.5 16.5 19.5 8.5"/></svg>
+							{/if}
 						{:else}
-							<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M11 5h2v14h-2V5zm-6 6h14v2H5v-2z"/></svg>
+							<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11 7h8M11 12h8M11 17h8M4.5 7.5l1.6 1.6 2.4-3.1M4.5 12.5l1.6 1.6 2.4-3.1M4.5 17.5l1.6 1.6 2.4-3.1"/></svg>
 						{/if}
 					</span>
-				{/if}
+					{#if list.reset_kind && list.reset_kind !== 'none'}
+						<span class="badge badge--muted" title={resetTitle(list.reset_kind)}>
+							{resetMarker(list.reset_kind)}
+						</span>
+					{/if}
+				</span>
 				{#if showCreate}
 					<span
 						class="delete-btn delete-btn--list"
@@ -458,7 +464,6 @@
 	.list-tab {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
 		padding: 0.6rem 0.8rem;
 		cursor: pointer;
 		border-bottom: 1px solid var(--pico-muted-border-color);
@@ -466,6 +471,9 @@
 		background: transparent;
 		border-left: none;
 		border-right: none;
+		gap: 0.55rem;
+		position: relative;
+		padding-right: 2.2rem;
 	}
 
 	.list-tab.active {
@@ -486,6 +494,19 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		font-size: 0.9rem;
+	}
+
+	.list-meta {
+		display: inline-flex;
+		flex-direction: column;
+		align-items: flex-end;
+		justify-content: center;
+		gap: 0.08rem;
+		flex-shrink: 0;
+		position: absolute;
+		right: 0.8rem;
+		top: 50%;
+		transform: translateY(-50%);
 	}
 
 	.new-list-form {
@@ -544,20 +565,25 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.25rem;
-		height: 1.25rem;
-		border: 1px solid var(--pico-muted-border-color);
-		border-radius: 0.45rem;
-		opacity: 0.9;
-		margin-left: 0.35rem;
+		width: 0.9rem;
+		height: 0.9rem;
 		flex-shrink: 0;
-		background: color-mix(in srgb, var(--pico-muted-border-color) 10%, transparent);
+		color: color-mix(in srgb, var(--pico-color) 72%, transparent);
+		opacity: 0.82;
+		font-size: 0.6rem;
+		font-weight: 700;
+		line-height: 1;
 	}
 
 	:global(.badge svg) {
 		width: 0.9rem;
 		height: 0.9rem;
 		display: block;
+	}
+
+	:global(.badge--muted) {
+		color: var(--pico-muted-color);
+		opacity: 0.72;
 	}
 
 	.new-list-input:focus {

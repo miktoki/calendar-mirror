@@ -8,19 +8,20 @@
 	} from '$lib/dateUtils';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
-	import EventPopup from './EventPopup.svelte';
 	import { onMount, onDestroy } from 'svelte';
 
 	export let events: CalendarEvent[];
 	export let anchor: Date;
 	export let weather: WeatherRecord | null = null;
 
-	let popupEvent: CalendarEvent | null = null;
-
 	const today = new Date();
 	const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 	const CELL_HEADER_PX = 20;
 	const CHIP_PX = 11;
+	const SHOW_WEEK_TOUCH_DEBUG = true;
+	const WEEK_TOUCH_TARGET_WIDTH_REM = 4;
+	const WEEK_NUMBER_GUTTER_REM = 1.6;
+	const FIRST_WEEKDAY_CONTENT_INSET_REM = WEEK_TOUCH_TARGET_WIDTH_REM - WEEK_NUMBER_GUTTER_REM;
 
 	let gridEl: HTMLElement;
 	let cellHeight = 80;
@@ -59,7 +60,7 @@
 	$: cellsWithWeather = buildCells(cells, timeseries);
 
 	function shouldHandleCalendarKeys(event: KeyboardEvent): boolean {
-		if (popupEvent || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
+		if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
 		const target = event.target;
 		if (!(target instanceof HTMLElement)) return true;
 		return !target.closest('input, textarea, select, [contenteditable="true"]');
@@ -102,18 +103,27 @@
 	<div class="cal-grid" bind:this={gridEl}>
 		{#each { length: 6 } as _, rowIdx}
 			{@const rowStart = cellsWithWeather[rowIdx * 7].day}
-			<div
-				class="week-num"
-				on:click={() => { anchor = rowStart; currentView.set('week'); }}
-			>{isoWeekNumber(rowStart)}</div>
-			{#each cellsWithWeather.slice(rowIdx * 7, rowIdx * 7 + 7) as { day, series }}
+			<div class="week-num">
+				<button
+					type="button"
+					class="week-touch-target"
+					class:debug-touch={SHOW_WEEK_TOUCH_DEBUG}
+					on:click={() => { anchor = rowStart; currentView.set('week'); }}
+					aria-label={`Open week ${isoWeekNumber(rowStart)}`}
+				>
+					<span class="week-num-label">{isoWeekNumber(rowStart)}</span>
+				</button>
+			</div>
+			{#each cellsWithWeather.slice(rowIdx * 7, rowIdx * 7 + 7) as { day, series }, colIdx}
 				{@const dayEvents = eventsOnDay(events, day)}
 				{@const visible = dayEvents.length > maxVisible ? dayEvents.slice(0, maxVisible - 1) : dayEvents}
 				{@const overflow = dayEvents.length - visible.length}
 				<div
 					class="cal-cell"
+					class:first-weekday={colIdx === 0}
 					class:other-month={day.getMonth() !== currentMonth}
 					class:today={isSameDay(day, today)}
+					style:--first-weekday-content-inset={colIdx === 0 ? `${FIRST_WEEKDAY_CONTENT_INSET_REM}rem` : '0rem'}
 					on:click={() => { anchor = day; currentView.set('day'); }}
 				>
 					<div class="cell-header">
@@ -123,7 +133,7 @@
 					<div class="event-list">
 						{#each visible as ev}
 							{@const c = eventColor(ev)}
-							<div class="ev-chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>
+							<div class="ev-chip" style="background: {c.bg}; color: {c.fg};">
 								<span class="ev-title">{ev.summary}</span>
 							</div>
 						{/each}
@@ -136,9 +146,6 @@
 		{/each}
 	</div>
 </div>
-
-<EventPopup event={popupEvent} on:close={() => (popupEvent = null)} />
-
 <style>
 	.month-view {
 		display: flex;
@@ -208,6 +215,7 @@
 	}
 
 	.week-num {
+		position: relative;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -215,8 +223,38 @@
 		color: var(--pico-muted-color);
 		border-right: 1px solid var(--pico-muted-border-color);
 		border-bottom: 1px solid var(--pico-muted-border-color);
-		cursor: pointer;
 		user-select: none;
+		overflow: visible;
+		z-index: 1;
+	}
+
+	.week-touch-target {
+		all: unset;
+		position: absolute;
+		left: 0;
+		top: 0;
+		height: 100%;
+		width: max(100%, 4rem);
+		display: flex;
+		align-items: center;
+		justify-content: flex-start;
+		cursor: pointer;
+		border-radius: 0.25rem;
+	}
+
+	/* .week-touch-target.debug-touch {
+		outline: 1px dashed rgba(255, 92, 92, 0.8);
+		outline-offset: -1px;
+		background: color-mix(in srgb, rgba(255, 92, 92, 0.14) 100%, transparent);
+	} */
+
+	.week-num-label {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.6rem;
+		height: 100%;
+		pointer-events: none;
 	}
 
 	.cal-cell {
@@ -229,6 +267,10 @@
 		gap: 0.15rem;
 		cursor: pointer;
 		user-select: none;
+	}
+
+	.cal-cell.first-weekday .event-list {
+		padding-left: calc(var(--first-weekday-content-inset) - 0.3rem);
 	}
 
 	.cell-header {
@@ -281,7 +323,6 @@
 		line-height: 1.16;
 		overflow: hidden;
 		white-space: nowrap;
-		cursor: pointer;
 	}
 
 	.ev-title {

@@ -5,7 +5,7 @@
 	import {
 		isAllDay, formatTime, isSameDay,
 		eventsOnDay, startOfWeek, addDays, formatDate, formatMonthYear, localDateStr,
-		timedSegmentsForDay, layoutOverlappingSegments, timedEventChipContent, plainTextFromHtml
+		isoWeekNumber, timedSegmentsForDay, layoutOverlappingSegments, timedEventChipContent, plainTextFromHtml
 	} from '$lib/dateUtils';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
@@ -20,6 +20,7 @@
 	let popupEvent: CalendarEvent | null = null;
 
 	$: weekStart = startOfWeek(anchor);
+	$: weekNumber = isoWeekNumber(weekStart);
 	$: days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
 	$: timeseries = weather?.forecast?.properties?.timeseries ?? [];
@@ -134,7 +135,10 @@
 <div class="week-view">
 	<header class="week-header">
 		<button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -7))}>‹</button>
-		<span class="period nav-label" on:click={() => currentView.set('month')}>{formatMonthYear(weekStart)}</span>
+		<button type="button" class="period nav-label" on:click={() => currentView.set('month')}>
+			<span class="period-title">{formatMonthYear(weekStart)}</span>
+			<span class="period-week-number" aria-hidden="true">W{weekNumber}</span>
+		</button>
 		<div class="header-right">
 			{#if !isCurrentWeek}
 				<button class="outline today-btn" on:click={() => (anchor = new Date())}>Today</button>
@@ -220,7 +224,24 @@
 		font-size: 1rem;
 		font-weight: 600;
 		flex: 1;
-		text-align: center;
+		display: inline-flex;
+		align-items: baseline;
+		justify-content: center;
+		gap: 0.7rem;
+	}
+
+	.period-title {
+		display: inline-block;
+	}
+
+	.period-week-number {
+		display: inline-block;
+		width: 2.8rem;
+		text-align: left;
+		font-size: 0.82rem;
+		font-weight: 500;
+		opacity: 0.45;
+		letter-spacing: 0.02em;
 	}
 
 	.nav-btn {
@@ -266,6 +287,10 @@
 	}
 
 	.nav-label {
+		padding: 0;
+		border: 0;
+		background: transparent;
+		color: inherit;
 		cursor: pointer;
 		user-select: none;
 	}
