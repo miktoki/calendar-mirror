@@ -22,6 +22,6 @@ build/
 # IDE
 .vscode/settings.json
 *.code-workspace
-
+screwups
 # db
 *.db

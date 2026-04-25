@@ -69,10 +69,6 @@
 		return !target.closest('input, textarea, select, [contenteditable="true"]');
 	}
 
-	function openViewSwitcher() {
-		window.dispatchEvent(new CustomEvent('view-switcher:open'));
-	}
-
 	function onWindowKeydown(event: KeyboardEvent) {
 		if (!shouldHandleCalendarKeys(event)) return;
 		if (event.key === 'ArrowLeft') {
@@ -84,10 +80,6 @@
 			event.preventDefault();
 			anchor = addMonths(anchor, 1);
 			return;
-		}
-		if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			openViewSwitcher();
 		}
 	}
 </script>

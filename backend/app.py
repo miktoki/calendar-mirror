@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 import sqlite3
-from typing import Optional
+from typing import Literal, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -62,6 +62,11 @@ def db_connect() -> sqlite3.Connection:
     return conn
 
 
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row["name"] == column for row in rows)
+
+
 def _default_event_time_min(now: datetime) -> str:
     now_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     prev_month_start = (now_month - timedelta(days=1)).replace(day=1)
@@ -93,6 +98,16 @@ def db_init():
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         """)
+        if not _has_column(conn, "todo_lists", "list_type"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN list_type TEXT NOT NULL DEFAULT 'todo'")
+        if not _has_column(conn, "todo_lists", "reset_kind"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN reset_kind TEXT NOT NULL DEFAULT 'none'")
+        if not _has_column(conn, "todo_lists", "week_ends_on"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN week_ends_on INTEGER NOT NULL DEFAULT 0")
+        if not _has_column(conn, "todo_lists", "counter_mode"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN counter_mode TEXT NOT NULL DEFAULT 'normal'")
+        if not _has_column(conn, "todo_lists", "counter_initial"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN counter_initial INTEGER NOT NULL DEFAULT 0")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS todo_items (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,7 +125,82 @@ def db_init():
                 data       TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS counter_state (
+                list_id     INTEGER PRIMARY KEY REFERENCES todo_lists(id) ON DELETE CASCADE,
+                bucket      TEXT NOT NULL,
+                value       INTEGER NOT NULL,
+                today       INTEGER NOT NULL DEFAULT 0,
+                updated_at  TEXT NOT NULL
+            )
+        """)
         conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _counter_bucket(reset_kind: str, week_ends_on: int, now: datetime) -> str:
+    local_now = now.astimezone()
+    if reset_kind == "daily":
+        return local_now.date().isoformat()
+    if reset_kind == "weekly":
+        weekday = (local_now.weekday() + 1) % 7
+        week_start = (week_ends_on + 1) % 7
+        days_since_start = (weekday - week_start) % 7
+        bucket_start = local_now.date() - timedelta(days=days_since_start)
+        return bucket_start.isoformat()
+    if reset_kind == "monthly":
+        return f"{local_now.year:04d}-{local_now.month:02d}"
+    if reset_kind == "yearly":
+        return f"{local_now.year:04d}"
+    return "all-time"
+
+
+def _get_counter_state(conn: sqlite3.Connection, list_id: int, now: datetime | None = None) -> dict:
+    current_time = now or datetime.now(timezone.utc)
+    row = conn.execute(
+        "SELECT * FROM todo_lists WHERE id = ?",
+        (list_id,),
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="counter not found")
+    if row["list_type"] != "counter":
+        raise HTTPException(status_code=400, detail="list is not a counter")
+
+    reset_kind = row["reset_kind"] or "none"
+    week_ends_on = row["week_ends_on"] or 0
+    bucket = _counter_bucket(reset_kind, week_ends_on, current_time)
+    state = conn.execute(
+        "SELECT * FROM counter_state WHERE list_id = ?",
+        (list_id,),
+    ).fetchone()
+
+    if not state or state["bucket"] != bucket:
+        value = row["counter_initial"] or 0
+        today = 0
+        conn.execute(
+            """
+            INSERT INTO counter_state (list_id, bucket, value, today, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(list_id) DO UPDATE SET
+                bucket = excluded.bucket,
+                value = excluded.value,
+                today = excluded.today,
+                updated_at = excluded.updated_at
+            """,
+            (list_id, bucket, value, today, current_time.isoformat()),
+        )
+    else:
+        value = state["value"]
+        today = state["today"]
+
+    return {
+        "counter_id": list_id,
+        "reset_kind": reset_kind,
+        "week_ends_on": week_ends_on,
+        "mode": row["counter_mode"] or "normal",
+        "initial": row["counter_initial"] or 0,
+        "value": value,
+        "today": today,
+    }
 
 
 async def fetch_events_from_google(
@@ -161,7 +251,7 @@ async def fetch_events_from_google(
                 "foregroundColor": fg,
             }
 
-    async def fetch_one(cal_id: str) -> tuple[str, list]:
+    async def fetch_one(cal_id: str) -> tuple[str, list, bool]:
         try:
             result = await loop.run_in_executor(
                 None,
@@ -174,15 +264,17 @@ async def fetch_events_from_google(
                     orderBy="startTime",
                 ).execute()
             )
-            return cal_id, result.get("items", [])
+            return cal_id, result.get("items", []), True
         except Exception as e:
             print(f"Error fetching events for {cal_id}: {e}")
-            return cal_id, []
+            return cal_id, [], False
 
     event_results, meta_results = await asyncio.gather(
         asyncio.gather(*[fetch_one(cid) for cid in CALENDAR_IDS]),
         asyncio.gather(*[fetch_calendar_meta(cid) for cid in CALENDAR_IDS]),
     )
+
+    all_succeeded = all(success for _, _, success in event_results)
 
     updated_at = now.isoformat()
     with db_connect() as conn:
@@ -200,7 +292,7 @@ async def fetch_events_from_google(
     color_map = {m["id"]: m for m in meta_results}
 
     merged = []
-    for cal_id, items in event_results:
+    for cal_id, items, _ in event_results:
         meta = color_map.get(cal_id, {})
         for event in items:
             event["calendarId"] = cal_id
@@ -214,7 +306,7 @@ async def fetch_events_from_google(
         return s.get("dateTime") or s.get("date") or ""
 
     merged.sort(key=sort_key)
-    if is_default_range:
+    if is_default_range and all_succeeded:
         with db_connect() as conn:
             conn.execute("""
                 INSERT INTO events (id, fetched_at, data)
@@ -222,6 +314,8 @@ async def fetch_events_from_google(
                 ON CONFLICT(id) DO UPDATE SET fetched_at = excluded.fetched_at,
                                               data       = excluded.data
             """, (now.isoformat(), json.dumps(merged)))
+    if not all_succeeded:
+        raise RuntimeError("Failed to refresh all calendars; kept cached events")
     return merged
 
 
@@ -355,6 +449,11 @@ async def weather():
 
 class ListCreate(BaseModel):
     name: str
+    list_type: Literal["todo", "counter"] = "todo"
+    reset_kind: Literal["none", "daily", "weekly", "monthly", "yearly"] = "none"
+    week_ends_on: int = 0
+    counter_mode: Literal["normal", "negative"] = "normal"
+    counter_initial: int = 0
 
 class ItemCreate(BaseModel):
     text: str
@@ -363,6 +462,10 @@ class ItemPatch(BaseModel):
     text: str | None = None
     done: bool | None = None
     sort_order: int | None = None
+
+
+class CounterDelta(BaseModel):
+    delta: int
 
 
 @app.get("/api/lists")
@@ -375,8 +478,18 @@ async def get_lists():
 @app.post("/api/lists", status_code=201)
 async def create_list(body: ListCreate):
     with db_connect() as conn:
+        week_ends_on = body.week_ends_on % 7 if body.reset_kind == "weekly" else 0
+        counter_mode = body.counter_mode if body.list_type == "counter" else "normal"
+        counter_initial = body.counter_initial if body.list_type == "counter" else 0
         cur = conn.execute(
-            "INSERT INTO todo_lists (name) VALUES (?) RETURNING *", (body.name,)
+            """
+            INSERT INTO todo_lists (
+                name, list_type, reset_kind, week_ends_on, counter_mode, counter_initial
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING *
+            """,
+            (body.name, body.list_type, body.reset_kind, week_ends_on, counter_mode, counter_initial)
         )
         row = cur.fetchone()
     return dict(row)
@@ -430,3 +543,31 @@ async def patch_item(item_id: int, body: ItemPatch):
 async def delete_item(item_id: int):
     with db_connect() as conn:
         conn.execute("DELETE FROM todo_items WHERE id = ?", (item_id,))
+
+
+@app.get("/api/counters/{list_id}")
+async def get_counter(list_id: int):
+    with db_connect() as conn:
+        return _get_counter_state(conn, list_id)
+
+
+@app.post("/api/counters/{list_id}/inc")
+async def increment_counter(list_id: int, body: CounterDelta):
+    with db_connect() as conn:
+        state = _get_counter_state(conn, list_id)
+        delta = body.delta
+        next_value = state["value"] + delta
+        if state["mode"] == "negative":
+            if next_value < 0 or next_value > state["initial"]:
+                raise HTTPException(status_code=409, detail="counter update out of range")
+        elif next_value < 0:
+            raise HTTPException(status_code=409, detail="counter update out of range")
+        effective_today_delta = delta if state["mode"] == "normal" else -delta
+        value = next_value
+        today = state["today"] + effective_today_delta
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "UPDATE counter_state SET value = ?, today = ?, updated_at = ? WHERE list_id = ?",
+            (value, today, now, list_id),
+        )
+    return {"ok": True, "value": value, "today": today}

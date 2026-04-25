@@ -24,8 +24,43 @@
 	let openListId: number | null = null;
 	let activeListIds: number[] = [];
 	let counterState: Record<number, CounterState> = {};
+	let counterError: Record<number, string> = {};
 	let showCreate = false;
 	const STORAGE_KEY = 'rpi.todoView.selection.v1';
+
+	function messageFromError(error: unknown, fallback: string): string {
+		return error instanceof Error ? error.message : fallback;
+	}
+
+	function formatCounterToday(value: number): string {
+		if (value === 0) return '0';
+		return `${value > 0 ? '+' : ''}${value}`;
+	}
+
+	function canApplyCounterDelta(state: CounterState, delta: number): boolean {
+		const nextValue = state.value + delta;
+		if (state.mode === 'negative') {
+			return nextValue >= 0 && nextValue <= state.initial;
+		}
+		return nextValue >= 0;
+	}
+
+	function counterButtons(state: CounterState): { label: string; delta: number; disabled: boolean }[] {
+		const negativeOrder = [
+			{ label: '-1', delta: -1 },
+			{ label: '-10', delta: -10 },
+			{ label: '+1', delta: 1 },
+			{ label: '+10', delta: 10 },
+		];
+		const normalOrder = [
+			{ label: '+1', delta: 1 },
+			{ label: '+10', delta: 10 },
+			{ label: '-1', delta: -1 },
+			{ label: '-10', delta: -10 },
+		];
+		const ordered = state.mode === 'negative' ? negativeOrder : normalOrder;
+		return ordered.map((button) => ({ ...button, disabled: !canApplyCounterDelta(state, button.delta) }));
+	}
 
 	function resetTitle(kind?: TodoList['reset_kind']): string {
 		switch (kind) {
@@ -77,7 +112,7 @@
 
 		lists = await fetchLists();
 		// Preload counter state so newly created counters don't show "Loading…" forever.
-		await Promise.all(
+		await Promise.allSettled(
 			lists
 				.filter((l) => (l.list_type ?? 'todo') === 'counter')
 				.map((l) => loadCounter(l.id))
@@ -110,7 +145,16 @@
 	}
 
 	async function loadCounter(listId: number) {
-		counterState[listId] = await fetchCounter(listId);
+		try {
+			counterState[listId] = await fetchCounter(listId);
+			delete counterError[listId];
+			counterError = { ...counterError };
+		} catch (error: unknown) {
+			const { [listId]: _removed, ...rest } = counterState;
+			counterState = rest;
+			counterError[listId] = messageFromError(error, 'Failed to load counter');
+			counterError = { ...counterError };
+		}
 	}
 
 	async function addList() {
@@ -137,7 +181,11 @@
 		await deleteList(id);
 		lists = lists.filter((l) => l.id !== id);
 		const { [id]: _, ...rest } = items;
+		const { [id]: _counterState, ...counterRest } = counterState;
+		const { [id]: _counterError, ...errorRest } = counterError;
 		items = rest;
+		counterState = counterRest;
+		counterError = errorRest;
 		activeListIds = activeListIds.filter((x) => x !== id);
 		if (openListId === id) openListId = activeListIds[0] ?? lists[0]?.id ?? null;
 		if (openListId !== null && activeListIds.length === 0) activeListIds = [openListId];
@@ -179,6 +227,8 @@
 
 	async function counterDelta(listId: number, delta: number) {
 		const res = await incCounter(listId, delta);
+		delete counterError[listId];
+		counterError = { ...counterError };
 		counterState[listId] = { ...(counterState[listId] ?? await fetchCounter(listId)), value: res.value, today: res.today };
 	}
 
@@ -330,14 +380,15 @@
 								{#if st}
 									<div class="counter-card">
 										<div class="counter-value">{st.value}</div>
-										<div class="counter-sub">today: +{st.today}</div>
+											<div class="counter-sub">today: {formatCounterToday(st.today)}</div>
 										<div class="counter-buttons">
-											<button class="outline" on:click={() => counterDelta(panelId, 1)}>+1</button>
-											<button class="outline" on:click={() => counterDelta(panelId, -1)}>-1</button>
-											<button class="outline" on:click={() => counterDelta(panelId, 10)}>+10</button>
-											<button class="outline" on:click={() => counterDelta(panelId, -10)}>-10</button>
+												{#each counterButtons(st) as button}
+													<button class="outline" disabled={button.disabled} on:click={() => counterDelta(panelId, button.delta)}>{button.label}</button>
+												{/each}
 										</div>
 									</div>
+								{:else if counterError[panelId]}
+									<p class="empty">{counterError[panelId]}</p>
 								{:else}
 									<p class="empty">Loading counter…</p>
 								{/if}

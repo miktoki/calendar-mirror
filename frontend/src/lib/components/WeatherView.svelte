@@ -82,6 +82,7 @@
 	function iconUrl(code: string): string | null {
 		return wxIconUrl(code);
 	}
+
 </script>
 
 <div class="weather-view">

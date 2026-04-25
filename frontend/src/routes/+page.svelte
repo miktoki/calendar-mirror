@@ -168,6 +168,21 @@
 		}
 	}
 
+	function shouldHandleGlobalArrowDown(event: KeyboardEvent): boolean {
+		if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
+		const target = event.target;
+		if (target instanceof HTMLElement) {
+			if (target.closest('input, textarea, select, button, [contenteditable="true"]')) return false;
+		}
+		return !document.querySelector('.backdrop');
+	}
+
+	function onWindowKeydown(event: KeyboardEvent) {
+		if (event.key !== 'ArrowDown' || !shouldHandleGlobalArrowDown(event)) return;
+		event.preventDefault();
+		window.dispatchEvent(new CustomEvent('view-switcher:open'));
+	}
+
 	onMount(() => {
 		const urlView = readViewFromUrl();
 		if (urlView) currentView.set(urlView);
@@ -191,6 +206,8 @@
 	$: saveAnchor(anchor);
 	$: if (mounted && anchor && lastFetchedAt > 0) fetchRangeIfNeeded($currentView, anchor);
 </script>
+
+<svelte:window on:keydown={onWindowKeydown} />
 
 {#if loadError}
 	<div class="error-banner">{loadError}</div>
