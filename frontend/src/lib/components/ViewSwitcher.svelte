@@ -47,6 +47,11 @@
 		if (!open || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
 		const target = event.target;
 		if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+		if (event.key === 'Escape' || event.key === 'ArrowDown') {
+			event.preventDefault();
+			closeSwitcher();
+			return;
+		}
 		const shortcut = shortcutMap[event.key.toLowerCase()];
 		if (!shortcut) return;
 		event.preventDefault();
@@ -55,10 +60,13 @@
 
 	onMount(() => {
 		const handleOpen = () => openSwitcher();
+		const handleToggle = () => toggleSwitcher();
 		window.addEventListener('view-switcher:open', handleOpen);
+		window.addEventListener('view-switcher:toggle', handleToggle);
 		window.addEventListener('keydown', onWindowKeydown);
 		return () => {
 			window.removeEventListener('view-switcher:open', handleOpen);
+			window.removeEventListener('view-switcher:toggle', handleToggle);
 			window.removeEventListener('keydown', onWindowKeydown);
 		};
 	});
@@ -122,7 +130,7 @@
 		font-size: 0.85rem;
 		border-radius: 2rem;
 		white-space: nowrap;
-		backdrop-filter: blur(6px);
+		background: black	;
 	}
 
 	nav button.active {

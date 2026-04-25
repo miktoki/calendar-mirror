@@ -31,14 +31,25 @@ BACKGROUND_COLOR = "#4285f4"
 
 # Distinct palette for assigning per-calendar colours when the API can't provide them
 _CALENDAR_PALETTE = [
-    ("#4285f4", "#ffffff"),  # Google blue
-    ("#0f9d58", "#ffffff"),  # Google green
-    ("#db4437", "#ffffff"),  # Google red
-    ("#f4b400", "#1a1a2e"),  # Google yellow
-    ("#ab47bc", "#ffffff"),  # purple
-    ("#00acc1", "#ffffff"),  # cyan
-    ("#ff7043", "#ffffff"),  # deep orange
-    ("#5c6bc0", "#ffffff"),  # indigo
+    # ("#4285f4", "#ffffff"),  # Google blue
+    # ("#0f9d58", "#ffffff"),  # Google green
+    # ("#db4437", "#ffffff"),  # Google red
+    # ("#f4b400", "#1a1a2e"),  # Google yellow
+    # ("#ab47bc", "#ffffff"),  # purple
+    # ("#00acc1", "#ffffff"),  # cyan
+    # ("#ff7043", "#ffffff"),  # deep orange
+    # ("#5c6bc0", "#ffffff"),  # indigo
+
+    ("#3F854D", "#ffffff"),  # Sage
+    ("#039BE5", "#ffffff"),  # Peacock
+    ("#7986CB", "#ffffff"),  # Lavender
+    ("#E67C73", "#ffffff"),  # Tangerine
+    ("#33B679", "#ffffff"),  # Basil
+    ("#F6BF26", "#ffffff"),  # Banana
+    ("#D50000", "#ffffff"),  # Tomato
+    ("#4285F4", "#ffffff"),  # Blueberry
+    ("#8E24AA", "#ffffff"),  # Grape
+    ("#616161", "#ffffff"),  # Graphite
 ]
 
 def _calendar_color(cal_id: str) -> tuple[str, str]:

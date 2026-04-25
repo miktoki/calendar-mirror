@@ -39,6 +39,7 @@
 	$: style = config.style ?? '';
 	$: titleLines = compact ? 1 : Math.min(totalTextLines, Math.max(baseTitleLines, requiredTitleLines));
 	$: descriptionLines = compact || !description ? 0 : Math.max(0, totalTextLines - titleLines);
+	$: inlineTitle = compact || (descriptionLines === 0 && titleLines === 1);
 	$: color = eventColor(event);
 	$: styleAttr = `${style}; background: ${color.bg}; color: ${color.fg}; --event-sep: ${separatorColor}; --title-lines: ${titleLines}; --desc-lines: ${descriptionLines};`;
 
@@ -79,6 +80,7 @@
 	class:compact
 	class:narrow
 	class:week={density === 'week'}
+	class:inline-title={inlineTitle}
 	bind:this={buttonEl}
 	style={styleAttr}
 	on:click|stopPropagation={open}
@@ -89,17 +91,17 @@
 			<span class="ev-time-sep">–</span>
 			<span class="ev-time">{endText}</span>
 		{/if}
-		{#if compact}
+		{#if inlineTitle}
 			<strong class="ev-title">{event.summary}</strong>
 		{/if}
 	</div>
-	{#if !compact}
+	{#if !inlineTitle}
 		<strong class="ev-title" bind:this={titleEl}>{event.summary}</strong>
 	{/if}
 	{#if descriptionLines > 0 && description}
 		<span class="ev-notes">{description}</span>
 	{/if}
-	{#if !compact && description}
+	{#if !inlineTitle && description}
 		<strong class="ev-title ev-title-probe" aria-hidden="true" bind:this={titleProbeEl}>{event.summary}</strong>
 	{/if}
 </button>
@@ -114,11 +116,12 @@
 		box-sizing: border-box;
 		display: flex;
 		border: 0;
+		border-top: 1px solid rgba(255, 255, 255, 0.28);
 		border-left: 3px solid rgba(0, 0, 0, 0.15);
 		border-bottom: 2px solid rgba(255, 255, 255, 0.35);
 		border-radius: 0.4rem;
 		background-image: none;
-		box-shadow: none;
+		box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 		font: inherit;
 		margin: 0;
 		padding: 0.25rem 0.45rem 0.3rem;
@@ -137,6 +140,7 @@
 		padding: 0.22rem 0.34rem 0.28rem;
 		font-size: 0.72rem;
 		gap: 0.14rem;
+		border-top-color: rgba(255, 255, 255, 0.24);
 		border-bottom: 2px solid var(--event-sep, rgba(255, 255, 255, 0.35));
 	}
 
@@ -185,13 +189,13 @@
 		font-size: 0.77rem;
 	}
 
-	.event-block.compact .ev-title {
+	.event-block.inline-title .ev-title {
 		white-space: nowrap;
 		text-overflow: ellipsis;
 		flex: 1;
 	}
 
-	.event-block:not(.compact) .ev-title {
+	.event-block:not(.inline-title) .ev-title {
 		order: 2;
 		flex: 0 0 auto;
 		display: -webkit-box;

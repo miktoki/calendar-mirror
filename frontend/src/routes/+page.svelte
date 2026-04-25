@@ -180,7 +180,7 @@
 	function onWindowKeydown(event: KeyboardEvent) {
 		if (event.key !== 'ArrowDown' || !shouldHandleGlobalArrowDown(event)) return;
 		event.preventDefault();
-		window.dispatchEvent(new CustomEvent('view-switcher:open'));
+		window.dispatchEvent(new CustomEvent('view-switcher:toggle'));
 	}
 
 	onMount(() => {
