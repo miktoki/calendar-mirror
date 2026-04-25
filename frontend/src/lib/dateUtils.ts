@@ -125,41 +125,67 @@ export function plainTextFromHtml(input: string | null | undefined): string {
 export function timedEventChipContent(
 	heightPx: number,
 	widthFraction = 1,
-	hasDescription = false
+	hasDescription = false,
+	density: 'day' | 'week' = 'day'
 ): TimedEventChipContent {
 	const narrow = widthFraction < 0.44;
-	const compact = heightPx < 40;
-	const lineHeight = narrow ? 13 : 14;
-	const chrome = compact ? 8 : 12;
-	const textLines = Math.max(1, Math.floor((heightPx - chrome) / lineHeight));
-	const titleMax = narrow ? 4 : 6;
 
-	if (compact) {
+	// Layout constants per density (assumes ~16px root font)
+	const PADDING         = density === 'day' ? 9  : 8;
+	const TIME_ROW_H      = density === 'day' ? 12 : 11;
+	const GAP             = density === 'day' ? 3  : 2;
+	const TITLE_LINE_H    = density === 'day' ? 15 : 14;
+	const DESC_LINE_H     = density === 'day' ? 13 : 12;
+	const COMPACT_THRESH  = density === 'day' ? 34 : 28;
+	const titleMax        = narrow ? 4 : 6;
+	// Narrower columns (or week density) benefit from fewer preferred title lines
+	const preferredTitleLines = density === 'week'
+		? (narrow ? 1 : 2)
+		: (narrow ? 2 : 3);
+
+	if (heightPx < COMPACT_THRESH) {
 		return {
 			compact: true,
 			narrow,
-			showEndTime: widthFraction >= 0.52 && heightPx >= 24,
+			showEndTime: false,
 			titleLines: 1,
 			descriptionLines: 0,
 		};
 	}
 
-	let titleLines = Math.min(titleMax, Math.max(1, textLines - 1));
-	let descriptionLines = 0;
-	const preferredTitleLines = narrow ? 2 : 3;
+	// Height budget after mandatory chrome: padding + time row + gap below it
+	const available = heightPx - PADDING - TIME_ROW_H - GAP;
 
-	if (hasDescription && textLines >= preferredTitleLines + 2) {
-		descriptionLines = Math.max(1, textLines - 1 - preferredTitleLines);
-		titleLines = Math.min(
-			titleMax,
-			Math.max(preferredTitleLines, textLines - 1 - descriptionLines)
-		);
+	if (available <= 0) {
+		return {
+			compact: true,
+			narrow,
+			showEndTime: false,
+			titleLines: 1,
+			descriptionLines: 0,
+		};
+	}
+
+	let titleLines = Math.max(1, Math.min(titleMax, Math.floor(available / TITLE_LINE_H)));
+	let descriptionLines = 0;
+
+	if (hasDescription) {
+		// Only show description if preferred title lines are guaranteed space first
+		const afterPreferredTitle = available - preferredTitleLines * TITLE_LINE_H - GAP;
+		if (afterPreferredTitle >= DESC_LINE_H) {
+			descriptionLines = Math.max(1, Math.floor(afterPreferredTitle / DESC_LINE_H));
+			// Re-derive title lines with description taking some space; never below preferred
+			const titleFromSpace = Math.floor(
+				(available - descriptionLines * DESC_LINE_H - GAP) / TITLE_LINE_H
+			);
+			titleLines = Math.max(preferredTitleLines, Math.min(titleMax, titleFromSpace));
+		}
 	}
 
 	return {
 		compact: false,
 		narrow,
-		showEndTime: widthFraction >= 0.48 && textLines >= 2,
+		showEndTime: widthFraction >= 0.48,
 		titleLines,
 		descriptionLines,
 	};

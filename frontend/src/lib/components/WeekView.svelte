@@ -1,15 +1,17 @@
 <script lang="ts">
 	import type { CalendarEvent, WeatherRecord, TimeSeries } from '$lib/api';
 	import { eventColor } from '$lib/api';
+	import type { TimedSegment, TimedEventChipContent } from '$lib/dateUtils';
 	import {
 		isAllDay, formatTime, isSameDay,
 		eventsOnDay, startOfWeek, addDays, formatDate, formatMonthYear, localDateStr,
-		timedSegmentsForDay, layoutOverlappingSegments
+		timedSegmentsForDay, layoutOverlappingSegments, timedEventChipContent, plainTextFromHtml
 	} from '$lib/dateUtils';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
 	import EventPopup from './EventPopup.svelte';
 	import AllDayEventChip from './AllDayEventChip.svelte';
+	import TimedEventChip from './TimedEventChip.svelte';
 
 	export let events: CalendarEvent[];
 	export let anchor: Date;
@@ -40,12 +42,21 @@
 		const segments = timedSegmentsForDay(dayEvs, day, START_HOUR);
 		const timedSegs = segments.filter((s) => !s.isFullDay);
 		const layout = layoutOverlappingSegments(timedSegs);
+		const timedRender = timedSegs.map((seg) => {
+			const h = segHeightPx(seg.displayStart, seg.displayEnd);
+			const evLayout = layout.get(seg.id);
+			const chip = timedEventChipContent(h, evLayout?.width ?? 1, Boolean(seg.ev.description), 'week');
+			const description = plainTextFromHtml(seg.ev.description);
+			const leftPct = (evLayout?.left ?? 0) * 100;
+			const widthPct = (evLayout?.width ?? 1) * 100;
+			const style = `top: ${segTopPx(seg.displayStart)}px; height: ${h}px; left: calc(1px + ${leftPct}%); width: calc(${widthPct}% - 2px);`;
+			return { seg, config: weekChipConfig(seg, chip, description, style) };
+		});
 		return {
 			day,
 			allDayEvs: dayEvs.filter(isAllDay),
 			fullDaySegs: segments.filter((s) => s.isFullDay),
-			timedSegs,
-			layout,
+			timedRender,
 		};
 	});
 
@@ -57,6 +68,38 @@
 	function segHeightPx(displayStart: Date, displayEnd: Date): number {
 		const dur = (displayEnd.getTime() - displayStart.getTime()) / 60000;
 		return Math.max(20, (dur / 60) * HOUR_HEIGHT);
+	}
+
+	function weekChipConfig(
+		segment: TimedSegment,
+		chip: TimedEventChipContent,
+		description: string,
+		style: string,
+	) {
+		let startText: string;
+		let endText: string | null;
+		if (segment.isContinuation) {
+			startText = '';
+			endText = formatTime(segment.end);
+		} else if (segment.endsAtMidnight) {
+			startText = formatTime(segment.start);
+			endText = '';
+		} else {
+			startText = formatTime(segment.start);
+			endText = chip.showEndTime ? formatTime(segment.end) : null;
+		}
+		return {
+			startText,
+			endText,
+			description,
+			compact: chip.compact,
+			narrow: chip.narrow,
+			titleLines: chip.titleLines,
+			descriptionLines: chip.descriptionLines,
+			density: 'week' as const,
+			separatorColor: 'rgba(255, 255, 255, 0.35)',
+			style,
+		};
 	}
 
 	function shouldHandleCalendarKeys(event: KeyboardEvent): boolean {
@@ -144,37 +187,18 @@
 				{/each}
 			</div>
 
-			{#each daysData as { timedSegs, layout }}
+			{#each daysData as { timedRender }}
 				<div class="day-col" style="height: {(END_HOUR - START_HOUR + 1) * HOUR_HEIGHT}px">
 					{#each hours as h}
 						<div class="hour-line" style="top: {(h - START_HOUR) * HOUR_HEIGHT}px"></div>
 					{/each}
 
-					{#each timedSegs as seg}
-						{@const c = eventColor(seg.ev)}
-						{@const h = segHeightPx(seg.displayStart, seg.displayEnd)}
-						{@const compact = h < 32}
-						{@const evLayout = layout.get(seg.id)}
-						{@const leftPct = (evLayout?.left ?? 0) * 100}
-						{@const widthPct = (evLayout?.width ?? 1) * 100}
-						<div
-							class="event-block"
-							class:compact
-							style="top: {segTopPx(seg.displayStart)}px; height: {h}px; left: calc(1px + {leftPct}%); width: calc({widthPct}% - 2px); background: {c.bg}; color: {c.fg};"
-							on:click|stopPropagation={() => (popupEvent = seg.ev)}
-						>
-							<div class="ev-title-row">
-								<strong>{seg.ev.summary}</strong>
-								{#if h >= 20}
-									<span class="ev-time">{formatTime(seg.displayStart)}</span>
-								{/if}
-							</div>
-							{#if !compact && h >= 64 && seg.ev.location}
-								<span class="ev-location">{seg.ev.location}</span>
-							{:else if !compact && h >= 72 && seg.ev.description}
-								<span class="ev-notes">{@html seg.ev.description}</span>
-							{/if}
-						</div>
+					{#each timedRender as { seg, config }}
+						<TimedEventChip
+							event={seg.ev}
+							{config}
+							onOpen={(e) => (popupEvent = e)}
+						/>
 					{/each}
 				</div>
 			{/each}
@@ -327,68 +351,5 @@
 		left: 0;
 		right: 0;
 		border-top: 1px solid var(--pico-muted-border-color);
-	}
-
-	.event-block {
-		position: absolute;
-		box-sizing: border-box;
-		background-image: none;
-		border-left: 3px solid rgba(0, 0, 0, 0.15);
-		border-bottom: 2px solid rgba(255, 255, 255, 0.35);
-		border-radius: 0.3rem;
-		padding: 0.2rem 0.3rem;
-		overflow: hidden;
-		font-size: 0.72rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.05rem;
-		cursor: pointer;
-	}
-
-	/* Short events: collapse to a single line */
-	.event-block.compact {
-		padding: 0 0.3rem;
-		justify-content: center;
-	}
-
-	.ev-title-row {
-		display: flex;
-		align-items: baseline;
-		gap: 0.3rem;
-		overflow: hidden;
-		min-width: 0;
-	}
-
-	.event-block strong {
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		font-size: 0.75rem;
-		flex: 1;
-		min-width: 0;
-	}
-
-	.ev-time {
-		opacity: 0.85;
-		font-size: 0.65rem;
-		flex-shrink: 0;
-	}
-
-	.ev-location {
-		font-size: 0.7rem;
-		opacity: 0.7;
-		overflow: hidden;
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 2;
-	}
-
-	.ev-notes {
-		font-size: 0.7rem;
-		opacity: 0.7;
-		overflow: hidden;
-		display: -webkit-box;
-		-webkit-box-orient: vertical;
-		-webkit-line-clamp: 3;
 	}
 </style>

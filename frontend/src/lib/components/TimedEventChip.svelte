@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { afterUpdate, onMount } from 'svelte';
 	import type { CalendarEvent } from '$lib/api';
 	import { eventColor } from '$lib/api';
 
@@ -19,22 +20,57 @@
 	export let config: TimedEventChipConfig;
 	export let onOpen: ((event: CalendarEvent) => void) | undefined = undefined;
 
+	let buttonEl: HTMLButtonElement | null = null;
+	let titleEl: HTMLElement | null = null;
+	let titleProbeEl: HTMLElement | null = null;
+	let requiredTitleLines = 1;
+	let resizeObserver: ResizeObserver | null = null;
+
 	$: startText = config.startText;
 	$: endText = config.endText ?? null;
 	$: description = config.description ?? '';
 	$: compact = config.compact ?? false;
 	$: narrow = config.narrow ?? false;
-	$: titleLines = config.titleLines ?? 2;
-	$: descriptionLines = config.descriptionLines ?? 0;
+	$: baseTitleLines = config.titleLines ?? 2;
+	$: baseDescriptionLines = config.descriptionLines ?? 0;
+	$: totalTextLines = baseTitleLines + baseDescriptionLines;
 	$: density = config.density ?? 'day';
 	$: separatorColor = config.separatorColor ?? 'transparent';
 	$: style = config.style ?? '';
+	$: titleLines = compact ? 1 : Math.min(totalTextLines, Math.max(baseTitleLines, requiredTitleLines));
+	$: descriptionLines = compact || !description ? 0 : Math.max(0, totalTextLines - titleLines);
 	$: color = eventColor(event);
 	$: styleAttr = `${style}; background: ${color.bg}; color: ${color.fg}; --event-sep: ${separatorColor}; --title-lines: ${titleLines}; --desc-lines: ${descriptionLines};`;
+
+	function updateTitleMetrics() {
+		if (!titleProbeEl || compact || baseDescriptionLines < 1 || !description) {
+			requiredTitleLines = 1;
+			return;
+		}
+
+		const lineHeight = Number.parseFloat(getComputedStyle(titleProbeEl).lineHeight);
+		if (!Number.isFinite(lineHeight) || lineHeight <= 0) {
+			requiredTitleLines = 1;
+			return;
+		}
+
+		requiredTitleLines = Math.max(1, Math.ceil((titleProbeEl.scrollHeight - 1) / lineHeight));
+	}
 
 	function open() {
 		onOpen?.(event);
 	}
+
+	onMount(() => {
+		resizeObserver = new ResizeObserver(() => updateTitleMetrics());
+		if (buttonEl) resizeObserver.observe(buttonEl);
+		if (titleEl) resizeObserver.observe(titleEl);
+		if (titleProbeEl) resizeObserver.observe(titleProbeEl);
+		updateTitleMetrics();
+		return () => resizeObserver?.disconnect();
+	});
+
+	afterUpdate(updateTitleMetrics);
 </script>
 
 <button
@@ -43,6 +79,7 @@
 	class:compact
 	class:narrow
 	class:week={density === 'week'}
+	bind:this={buttonEl}
 	style={styleAttr}
 	on:click|stopPropagation={open}
 >
@@ -57,10 +94,13 @@
 		{/if}
 	</div>
 	{#if !compact}
-		<strong class="ev-title">{event.summary}</strong>
+		<strong class="ev-title" bind:this={titleEl}>{event.summary}</strong>
 	{/if}
 	{#if descriptionLines > 0 && description}
 		<span class="ev-notes">{description}</span>
+	{/if}
+	{#if !compact && description}
+		<strong class="ev-title ev-title-probe" aria-hidden="true" bind:this={titleProbeEl}>{event.summary}</strong>
 	{/if}
 </button>
 
@@ -97,8 +137,6 @@
 		padding: 0.22rem 0.34rem 0.28rem;
 		font-size: 0.72rem;
 		gap: 0.14rem;
-		margin-left: 1px;
-		margin-right: 1px;
 		border-bottom: 2px solid var(--event-sep, rgba(255, 255, 255, 0.35));
 	}
 
@@ -161,6 +199,25 @@
 		line-clamp: var(--title-lines, 2);
 		-webkit-line-clamp: var(--title-lines, 2);
 		white-space: normal;
+	}
+
+	.ev-title-probe {
+		position: absolute;
+		left: calc(0.5rem + 2px);
+		right: calc(0.5rem + 2px);
+		top: calc(0.25rem + 0.68rem * 1.1 + 0.16rem);
+		visibility: hidden;
+		pointer-events: none;
+		z-index: -1;
+		display: block;
+		white-space: normal;
+		overflow: visible;
+	}
+
+	.event-block.week .ev-title-probe {
+		left: 0.34rem;
+		right: 0.34rem;
+		top: calc(0.22rem + 0.65rem * 1.1 + 0.14rem);
 	}
 
 	.ev-notes {

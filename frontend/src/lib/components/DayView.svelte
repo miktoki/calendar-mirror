@@ -27,7 +27,7 @@
 	$: timedRender = timedSegments.map((segment) => {
 		const height = heightPx(segment.displayStart, segment.displayEnd);
 		const eventLayout = layout.get(segment.id);
-		const chip = timedEventChipContent(height, eventLayout?.width ?? 1, Boolean(segment.ev.description));
+		const chip = timedEventChipContent(height, eventLayout?.width ?? 1, Boolean(segment.ev.description), 'day');
 		const description = plainTextFromHtml(segment.ev.description);
 		const leftPct = (eventLayout?.left ?? 0) * 100;
 		const widthPct = (eventLayout?.width ?? 1) * 100;
