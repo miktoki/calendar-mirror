@@ -6,6 +6,14 @@
 	} from '$lib/api';
 	import type { TodoList, TodoItem, CounterState } from '$lib/api';
 	import { onMount } from 'svelte';
+	import CounterPanel from './CounterPanel.svelte';
+	import TodoListPanel from './TodoListPanel.svelte';
+
+	type CounterButton = {
+		label: string;
+		delta: number;
+		disabled: boolean;
+	};
 
 	let lists: TodoList[] = [];
 	let items: Record<number, TodoItem[]> = {};
@@ -45,7 +53,7 @@
 		return nextValue >= 0;
 	}
 
-	function counterButtons(state: CounterState): { label: string; delta: number; disabled: boolean }[] {
+	function counterButtons(state: CounterState): CounterButton[] {
 		const negativeOrder = [
 			{ label: '-1', delta: -1 },
 			{ label: '-10', delta: -10 },
@@ -232,6 +240,10 @@
 		counterState[listId] = { ...(counterState[listId] ?? await fetchCounter(listId)), value: res.value, today: res.today };
 	}
 
+	function updateDraft(listId: number, value: string) {
+		newItemText = { ...newItemText, [listId]: value };
+	}
+
 	function itemPlaceholderFor(list?: TodoList | undefined | null): string {
 		return `Add item to ${list?.name ?? 'list'}…`;
 	}
@@ -369,64 +381,28 @@
 				{#each activeListIds as panelId (panelId)}
 					{@const panelList = lists.find((l) => l.id === panelId)}
 					{#if panelList}
-						<section class="panel" class:panelActive={panelId === openListId}>
-							<header class="panel-header">
-								<div class="panel-title">{panelList.name}</div>
-								<button type="button" class="outline panel-close" on:click={() => selectList(panelId)} aria-label="Hide panel">✕</button>
-							</header>
-
-							{#if panelList.list_type === 'counter'}
-								{@const st = counterState[panelId]}
-								{#if st}
-									<div class="counter-card">
-										<div class="counter-value">{st.value}</div>
-											<div class="counter-sub">today: {formatCounterToday(st.today)}</div>
-										<div class="counter-buttons">
-												{#each counterButtons(st) as button}
-													<button class="outline" disabled={button.disabled} on:click={() => counterDelta(panelId, button.delta)}>{button.label}</button>
-												{/each}
-										</div>
-									</div>
-								{:else if counterError[panelId]}
-									<p class="empty">{counterError[panelId]}</p>
-								{:else}
-									<p class="empty">Loading counter…</p>
-								{/if}
-							{:else}
-								{@const panelItems = items[panelId] ?? []}
-								{@const activeItems = panelItems.filter((i) => !i.done)}
-								{@const doneItems = panelItems.filter((i) => i.done)}
-
-								<ul class="item-list">
-									{#each activeItems as item (item.id)}
-										<li class="item-row">
-											<input type="checkbox" checked={!!item.done} on:change={() => toggleItem(item)} />
-											<span class="item-text">{item.text}</span>
-											<button class="delete-btn" on:click={() => removeItem(item)} aria-label="Delete item">✕</button>
-										</li>
-									{/each}
-									{#if doneItems.length}
-										<li class="done-divider">Completed</li>
-										{#each doneItems as item (item.id)}
-											<li class="item-row done">
-												<input type="checkbox" checked={!!item.done} on:change={() => toggleItem(item)} />
-												<span class="item-text">{item.text}</span>
-												<button class="delete-btn" on:click={() => removeItem(item)} aria-label="Delete item">✕</button>
-											</li>
-										{/each}
-									{/if}
-								</ul>
-
-								<form class="new-item-form" on:submit|preventDefault={() => addItem(panelId)}>
-									<input
-										class="new-item-input"
-										bind:value={newItemText[panelId]}
-										placeholder={itemPlaceholderFor(panelList)}
-										aria-label="New item"
-									/>
-								</form>
-							{/if}
-						</section>
+						{#if panelList.list_type === 'counter'}
+							<CounterPanel
+								list={panelList}
+								state={counterState[panelId] ?? null}
+								error={counterError[panelId] ?? ''}
+								buttons={counterState[panelId] ? counterButtons(counterState[panelId]) : []}
+								todayLabel={counterState[panelId] ? formatCounterToday(counterState[panelId].today) : '0'}
+								onDelta={(delta) => counterDelta(panelId, delta)}
+								onHide={() => selectList(panelId)}
+							/>
+						{:else}
+							<TodoListPanel
+								list={panelList}
+								items={items[panelId] ?? []}
+								draft={newItemText[panelId] ?? ''}
+								onDraftChange={(value) => updateDraft(panelId, value)}
+								onAddItem={() => addItem(panelId)}
+								onToggleItem={toggleItem}
+								onRemoveItem={removeItem}
+								onHide={() => selectList(panelId)}
+							/>
+						{/if}
 					{/if}
 				{/each}
 			</div>
@@ -552,8 +528,7 @@
 		width: 6rem;
 	}
 
-	.new-list-input,
-	.new-item-input {
+	.new-list-input {
 		width: 100%;
 		background: transparent;
 		border: none;
@@ -585,8 +560,7 @@
 		display: block;
 	}
 
-	.new-list-input:focus,
-	.new-item-input:focus {
+	.new-list-input:focus {
 		border-bottom-color: var(--pico-primary);
 	}
 
@@ -595,118 +569,19 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		padding: 0.5rem 1rem;
+		padding: 0.5rem 0.85rem;
 	}
 
 	.panel-grid {
 		flex: 1;
-		overflow: auto;
+		overflow-y: auto;
+		overflow-x: hidden;
 		display: grid;
 		gap: 0.75rem;
-		grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
 		align-content: start;
 		padding-bottom: 0.5rem;
-	}
-
-	.panel {
-		border: 1px solid var(--pico-muted-border-color);
-		border-radius: 0.6rem;
-		padding: 0.6rem 0.75rem;
-		min-height: 14rem;
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		background: color-mix(in srgb, var(--pico-muted-border-color) 6%, transparent);
-	}
-
-	.panel.panelActive {
-		background: color-mix(in srgb, var(--pico-muted-border-color) 6%, transparent);
-	}
-
-	.panel-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 0.5rem;
-		padding-bottom: 0.4rem;
-		margin-bottom: 0.4rem;
-		border-bottom: 1px solid var(--pico-muted-border-color);
-		flex-shrink: 0;
-	}
-
-	.panel-title {
-		font-size: 0.9rem;
-		font-weight: 650;
-		opacity: 0.85;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.panel-close {
-		padding: 0.15rem 0.4rem;
-		font-size: 0.85rem;
-		line-height: 1;
-		opacity: 0.8;
-	}
-
-	.item-list {
-		flex: 1;
-		overflow-y: auto;
-		list-style: none;
-		padding: 0;
-		margin: 0;
-	}
-
-	/* Optional: inside each panel, use columns when the panel is wide enough */
-	@media (min-width: 55rem) {
-		.panel .item-list {
-			column-width: 20rem;
-			column-gap: 1.15rem;
-		}
-		.panel .item-row,
-		.panel .done-divider {
-			break-inside: avoid;
-		}
-	}
-
-	.item-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.4rem 0;
-		border-bottom: 1px solid var(--pico-muted-border-color);
-	}
-
-	.item-row.done .item-text {
-		text-decoration: line-through;
-		opacity: 0.5;
-	}
-
-	.item-text {
-		flex: 1;
-		font-size: 0.95rem;
-	}
-
-	.done-divider {
-		font-size: 0.7rem;
-		color: var(--pico-muted-color);
-		padding: 0.5rem 0 0.2rem;
-		list-style: none;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-	}
-
-	.delete-btn {
-		background: none;
-		border: none;
-		color: var(--pico-muted-color);
-		cursor: pointer;
-		font-size: 0.75rem;
-		padding: 0.1rem 0.3rem;
-		line-height: 1;
-		opacity: 0.4;
-		flex-shrink: 0;
+		grid-auto-flow: dense;
 	}
 
 	.delete-btn--list {
@@ -715,38 +590,23 @@
 		opacity: 0.6;
 	}
 
-	.counter-card {
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-		padding: 1rem 0.5rem;
-	}
-
-	.counter-value {
-		font-size: 2.2rem;
-		font-variant-numeric: tabular-nums;
-		font-weight: 700;
-	}
-
-	.counter-sub {
-		font-size: 0.8rem;
-		opacity: 0.7;
-	}
-
-	.counter-buttons {
-		display: flex;
-		gap: 0.35rem;
-		flex-wrap: wrap;
-	}
-
 	.delete-btn:hover {
 		opacity: 1;
 		color: var(--pico-del-color);
 	}
 
-	.new-item-form {
-		padding: 0.5rem 0;
-		flex-shrink: 0;
+	:global(.todo-panel) {
+		min-width: 0;
+	}
+
+	@media (min-width: 68rem) {
+		.panel-grid {
+			grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+		}
+
+		:global(.todo-panel) {
+			grid-column: span 2;
+		}
 	}
 
 	.empty {

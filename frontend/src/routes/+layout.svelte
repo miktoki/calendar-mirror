@@ -23,6 +23,14 @@
 		background: var(--pico-background-color);
 	}
 
+	:global(button.outline),
+	:global([type='button'].outline),
+	:global([type='submit'].outline),
+	:global([role='button'].outline) {
+		border-color: transparent;
+		box-shadow: inset 0 0 0 var(--pico-border-width) currentColor;
+	}
+
 	main {
 		width: 100vw;
 		height: 100vh;

@@ -3,7 +3,7 @@
 	import { eventColor } from '$lib/api';
 	import {
 		eventsOnDay, startOfMonth, startOfWeek, addDays, addMonths,
-		isSameDay, formatMonthYear, isAllDay, eventStart, formatTime,
+		isSameDay, formatMonthYear, isAllDay,
 		isoWeekNumber, localDateStr
 	} from '$lib/dateUtils';
 	import WeatherWidget from './WeatherWidget.svelte';
@@ -21,7 +21,6 @@
 	const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 	const CELL_HEADER_PX = 20;
 	const CHIP_PX = 11;
-	const MAX_VISIBLE_ROWS = 6;
 
 	let gridEl: HTMLElement;
 	let cellHeight = 80;
@@ -29,10 +28,7 @@
 
 	// Max chips that visually fit in a cell (no overflow line reserved yet;
 	// per-cell logic in template reserves 1 slot for "+N more" when needed).
-	$: maxVisible = Math.max(
-		1,
-		Math.min(MAX_VISIBLE_ROWS, Math.floor((cellHeight - CELL_HEADER_PX) / CHIP_PX))
-	);
+	$: maxVisible = Math.max(1, Math.floor((cellHeight - CELL_HEADER_PX) / CHIP_PX));
 
 	onMount(() => {
 		ro = new ResizeObserver((entries) => {
@@ -128,9 +124,6 @@
 						{#each visible as ev}
 							{@const c = eventColor(ev)}
 							<div class="ev-chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>
-								{#if !isAllDay(ev)}
-									<span class="ev-time">{formatTime(eventStart(ev))}</span>
-								{/if}
 								<span class="ev-title">{ev.summary}</span>
 							</div>
 						{/each}
@@ -271,13 +264,13 @@
 	.event-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.03rem;
+		gap: 0;
 		overflow: hidden;
 	}
 
 	.ev-chip {
 		display: flex;
-		gap: 0.16rem;
+		gap: 0;
 		align-items: baseline;
 		background-image: none;
 		border-left: 2px solid rgba(0, 0, 0, 0.15);
@@ -289,11 +282,6 @@
 		overflow: hidden;
 		white-space: nowrap;
 		cursor: pointer;
-	}
-
-	.ev-time {
-		opacity: 0.8;
-		flex-shrink: 0;
 	}
 
 	.ev-title {
