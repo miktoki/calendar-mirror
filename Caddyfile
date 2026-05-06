@@ -1,5 +1,5 @@
 :{$CADDY_PORT:8080} {
-    root * {$FRONTEND_ROOT:/home/pi/rpi-calendar/frontend}
+    root * {$FRONTEND_ROOT:/home/mikaelt/calendar-mirror/dist/frontend}
 
     # API: always proxy, never fall back to SPA HTML.
     handle /api/* {

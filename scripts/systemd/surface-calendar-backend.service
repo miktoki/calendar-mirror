@@ -1,0 +1,15 @@
+[Unit]
+Description=Surface Calendar FastAPI Backend
+After=network.target
+
+[Service]
+User=mikaelt
+WorkingDirectory=/home/mikaelt/calendar-mirror/dist/backend
+Environment="PATH=/home/mikaelt/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=uv run gunicorn -w 2 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:5000 app:app
+Restart=always
+RestartSec=5
+EnvironmentFile=-/home/mikaelt/calendar-mirror/dist/backend/.env
+
+[Install]
+WantedBy=multi-user.target

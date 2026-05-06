@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { currentView, VALID_VIEWS, type View } from '$lib/stores';
-	import { fetchEvents, fetchWeather } from '$lib/api';
-	import type { CalendarEvent, WeatherRecord } from '$lib/api';
+	import { fetchCalendars, fetchEvents, fetchWeather } from '$lib/api';
+	import type { CalendarEvent, CalendarMeta, WeatherRecord } from '$lib/api';
 	import DayView from '$lib/components/DayView.svelte';
 	import WeekView from '$lib/components/WeekView.svelte';
 	import MonthView from '$lib/components/MonthView.svelte';
@@ -15,6 +15,7 @@
 	const ANCHOR_KEY = 'rpi-calendar-anchor';
 
 	let events: CalendarEvent[] = [];
+	let calendars: CalendarMeta[] = [];
 	let weather: WeatherRecord | null = null;
 	let anchor = new Date();
 	let loadError = '';
@@ -56,8 +57,9 @@
 
 	/** Merge new events into the existing array, deduplicating by id. */
 	function mergeEvents(existing: CalendarEvent[], incoming: CalendarEvent[]): CalendarEvent[] {
-		const map = new Map(existing.map((e) => [e.id, e]));
-		for (const e of incoming) map.set(e.id, e);
+		const keyOf = (event: CalendarEvent) => `${event.calendarId ?? ''}:${event.id}`;
+		const map = new Map(existing.map((event) => [keyOf(event), event]));
+		for (const event of incoming) map.set(keyOf(event), event);
 		return [...map.values()].sort((a, b) => {
 			const as = a.start.dateTime ?? a.start.date ?? '';
 			const bs = b.start.dateTime ?? b.start.date ?? '';
@@ -102,6 +104,7 @@
 		refreshInFlight = true;
 		refreshWeatherIfNeeded();
 		try {
+			calendars = await fetchCalendars();
 			events = await fetchEvents(undefined, undefined, signal);
 			const now = new Date();
 			fetchedMin = defaultFetchedMin(now);
@@ -214,11 +217,11 @@
 {/if}
 
 {#if $currentView === 'day'}
-	<DayView {events} {weather} bind:anchor />
+	<DayView {events} {weather} {refresh} bind:anchor />
 {:else if $currentView === 'week'}
-	<WeekView {events} {weather} bind:anchor />
+	<WeekView {events} {weather} {calendars} {refresh} bind:anchor />
 {:else if $currentView === 'month'}
-	<MonthView {events} {weather} bind:anchor />
+	<MonthView {events} {weather} {refresh} bind:anchor />
 {:else if $currentView === 'weather'}
 	<WeatherView {weather} />
 {:else if $currentView === 'todo'}

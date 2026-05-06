@@ -2,15 +2,25 @@ const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 export interface CalendarEvent {
 	id: string;
+	calendarId?: string;
 	summary: string;
 	description?: string;
 	location?: string;
 	colorId?: string;
+	calendarSummary?: string;
 	calendarColor?: string;
 	calendarForeground?: string;
 	start: { dateTime?: string; date?: string; timeZone?: string };
 	end: { dateTime?: string; date?: string; timeZone?: string };
 	allDay?: boolean;
+}
+
+export interface CalendarMeta {
+	id: string;
+	summary: string;
+	background_color: string;
+	foreground_color: string;
+	updated_at: string;
 }
 
 const EVENT_COLORS: Record<string, { bg: string; fg: string }> = {
@@ -111,6 +121,11 @@ export async function fetchEvents(min?: Date, max?: Date, signal?: AbortSignal):
 	if (max) url.searchParams.set('max', max.toISOString());
 	const res = await fetch(url.toString(), { signal });
 	return readJsonOrThrow<CalendarEvent[]>(res, 'Failed to fetch events');
+}
+
+export async function fetchCalendars(): Promise<CalendarMeta[]> {
+	const res = await fetch(`${BASE}/api/calendars`);
+	return readJsonOrThrow<CalendarMeta[]>(res, 'Failed to fetch calendars');
 }
 
 export async function fetchWeather(): Promise<WeatherRecord> {

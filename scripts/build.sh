@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# build.sh — Build frontend and assemble a deployable dist/ folder.
+# build.sh — Build frontend and assemble a deployable folder.
 #
 # Usage:
 #   ./scripts/build.sh [--dest <path>]  (default: ./dist)
 #
-# The resulting dist/ can be rsync'd to the Pi:
-#   rsync -av dist/ pi@raspberrypi.local:/home/pi/rpi-calendar/
+# The resulting folder can be rsync'd to the Pi:
+#   rsync -av dist/ mikaelt@surface.local:/home/mikaelt/calendar-mirror/dist/
 #
 set -euo pipefail
 
@@ -56,7 +56,7 @@ fi
 # echo "→ Copying helper scripts..."
 mkdir -p "${DEST}/scripts"
 cp "${REPO_ROOT}/scripts/fetch_google_api_key.py" "${DEST}/scripts/"
-cp "${REPO_ROOT}/scripts/setup-pi.sh"             "${DEST}/scripts/"
+cp "${REPO_ROOT}/scripts/setup-surface.sh"        "${DEST}/scripts/"
 
 # ── Caddy config ─────────────────────────────────────────────────────────────
 # echo "→ Copying Caddyfile..."
@@ -69,5 +69,5 @@ cp "${REPO_ROOT}/scripts/systemd/"*.service "${DEST}/scripts/systemd/"
 
 # echo ""
 # echo "✔ Done. Deploy to the Pi with:"
-# echo "  rsync -av '${DEST}/' pi@raspberrypi.local:/home/pi/rpi-calendar/"
-# echo "  Then on the Pi: bash /home/pi/rpi-calendar/scripts/setup-pi.sh"
+# echo "  rsync -av '${DEST}/' mikaelt@surface.local:/home/mikaelt/calendar-mirror/dist/"
+# echo "  Then on the target: bash /home/mikaelt/calendar-mirror/dist/scripts/setup-surface.sh"

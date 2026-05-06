@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { CalendarEvent, WeatherRecord, TimeSeries } from '$lib/api';
+	import type { CalendarEvent, CalendarMeta, WeatherRecord, TimeSeries } from '$lib/api';
 	import { eventColor } from '$lib/api';
 	import type { TimedSegment, TimedEventChipContent } from '$lib/dateUtils';
 	import {
@@ -12,16 +12,28 @@
 	import EventPopup from './EventPopup.svelte';
 	import AllDayEventChip from './AllDayEventChip.svelte';
 	import TimedEventChip from './TimedEventChip.svelte';
+	import { createPullToRefresh, defaultHourScrollTop, scrollHoursBy } from '$lib/calendarInteractions';
+	import { onMount } from 'svelte';
 
 	export let events: CalendarEvent[];
+	export let calendars: CalendarMeta[] = [];
 	export let anchor: Date;
 	export let weather: WeatherRecord | null = null;
+	export let refresh: (() => Promise<void>) | undefined = undefined;
 
 	let popupEvent: CalendarEvent | null = null;
+	let scrollRow: HTMLDivElement;
 
 	$: weekStart = startOfWeek(anchor);
 	$: weekNumber = isoWeekNumber(weekStart);
 	$: days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+	$: calendarBadges = calendars
+		.filter((calendar) => calendar.summary)
+		.map((calendar) => ({
+			label: calendar.summary.slice(0, 6),
+			bg: calendar.background_color,
+			fg: calendar.foreground_color,
+		}));
 
 	$: timeseries = weather?.forecast?.properties?.timeseries ?? [];
 	let daysWithWeather: { day: Date; series: TimeSeries[] }[];
@@ -33,8 +45,24 @@
 	const HOUR_HEIGHT = 56;
 	const START_HOUR = 6;
 	const END_HOUR = 23;
+	const DEFAULT_VISIBLE_START_HOUR = 8;
+	const DEFAULT_VISIBLE_END_HOUR = 20;
 	const hours = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
 	const today = new Date();
+	const pullToRefresh = createPullToRefresh(() => refresh?.() ?? Promise.resolve());
+
+	onMount(() => {
+		if (scrollRow) {
+			scrollRow.scrollTop = defaultHourScrollTop(
+				START_HOUR,
+				DEFAULT_VISIBLE_START_HOUR,
+				DEFAULT_VISIBLE_END_HOUR,
+				END_HOUR,
+				HOUR_HEIGHT,
+				scrollRow.clientHeight,
+			);
+		}
+	});
 
 	$: isCurrentWeek = days.some((d) => d.toDateString() === today.toDateString());
 
@@ -112,6 +140,26 @@
 
 	function onWindowKeydown(event: KeyboardEvent) {
 		if (!shouldHandleCalendarKeys(event)) return;
+		if (scrollRow && event.key === 'PageDown') {
+			event.preventDefault();
+			scrollHoursBy(scrollRow, 3, HOUR_HEIGHT);
+			return;
+		}
+		if (scrollRow && event.key === 'PageUp') {
+			event.preventDefault();
+			scrollHoursBy(scrollRow, -3, HOUR_HEIGHT);
+			return;
+		}
+		if (scrollRow && event.key === 'Home') {
+			event.preventDefault();
+			scrollRow.scrollTo({ top: 0, behavior: 'smooth' });
+			return;
+		}
+		if (scrollRow && event.key === 'End') {
+			event.preventDefault();
+			scrollRow.scrollTo({ top: scrollRow.scrollHeight, behavior: 'smooth' });
+			return;
+		}
 		if (event.key === 'ArrowLeft') {
 			event.preventDefault();
 			anchor = addDays(anchor, -7);
@@ -134,7 +182,16 @@
 
 <div class="week-view">
 	<header class="week-header">
-		<button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -7))}>‹</button>
+		<div class="header-left">
+			<button class="outline nav-btn" on:click={() => (anchor = addDays(anchor, -7))}>‹</button>
+			{#if calendarBadges.length}
+				<div class="calendar-badges">
+					{#each calendarBadges as badge}
+						<span class="calendar-badge" style="background: {badge.bg}; color: {badge.fg};">{badge.label}</span>
+					{/each}
+				</div>
+			{/if}
+		</div>
 		<button type="button" class="period nav-label" on:click={() => currentView.set('month')}>
 			<span class="period-title">{formatMonthYear(weekStart)}</span>
 			<span class="period-week-number" aria-hidden="true">W{weekNumber}</span>
@@ -155,8 +212,10 @@
 				class:today={isSameDay(day, today)}
 				on:click={() => { anchor = day; currentView.set('day'); }}
 			>
-				<span class="dow">{day.toLocaleDateString([], { weekday: 'short' })}</span>
-				<span class="dom" class:today={isSameDay(day, today)}>{day.getDate()}</span>
+				<div class="day-label-row">
+					<span class="dow">{day.toLocaleDateString([], { weekday: 'short' })}</span>
+					<span class="dom" class:today={isSameDay(day, today)}>{day.getDate()}</span>
+				</div>
 				<WeatherWidget {series} hour={12} mode="day" />
 			</div>
 		{/each}
@@ -174,7 +233,13 @@
 			</div>
 		{/each}
 
-		<div class="scroll-row">
+		<div
+			class="scroll-row"
+			bind:this={scrollRow}
+			on:touchstart={(event) => pullToRefresh.onTouchStart(event, scrollRow?.scrollTop ?? 0)}
+			on:touchmove={(event) => pullToRefresh.onTouchMove(event, scrollRow?.scrollTop ?? 0)}
+			on:touchend={pullToRefresh.onTouchEnd}
+		>
 			<div class="time-col">
 				{#each hours as h}
 					<div class="hour-label" style="height: {HOUR_HEIGHT}px">
@@ -213,35 +278,65 @@
 	}
 
 	.week-header {
-		display: flex;
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
 		align-items: center;
-		justify-content: space-between;
-		padding: 0.4rem 1rem;
+		padding: 0.5rem 1rem;
 		flex-shrink: 0;
+		column-gap: 0.5rem;
+	}
+
+	.header-left {
+		display: flex;
+		justify-content: flex-start;
+		align-items: center;
+		gap: 0.35rem;
+		min-width: 0;
 	}
 
 	.period {
-		font-size: 1rem;
-		font-weight: 600;
-		flex: 1;
 		display: inline-flex;
-		align-items: baseline;
+		align-items: center;
 		justify-content: center;
-		gap: 0.7rem;
+		margin: 0;
+		min-height: 1.45rem;
+		font-size: 1.2rem;
+		font-weight: 600;
+		position: relative;
+		line-height: 1.2;
 	}
 
 	.period-title {
 		display: inline-block;
+		line-height: 1.2;
 	}
 
 	.period-week-number {
-		display: inline-block;
-		width: 2.8rem;
-		text-align: left;
+		position: absolute;
+		right: -2.6rem;
+		top: 0.2rem;
 		font-size: 0.82rem;
 		font-weight: 500;
 		opacity: 0.45;
 		letter-spacing: 0.02em;
+	}
+
+	.calendar-badges {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-start;
+		gap: 0.3rem;
+		max-width: min(20rem, 40vw);
+		overflow: hidden;
+	}
+
+	.calendar-badge {
+		border-radius: 999px;
+		font-size: 0.68rem;
+		font-weight: 600;
+		line-height: 1;
+		padding: 0.18rem 0.45rem;
+		white-space: nowrap;
 	}
 
 	.nav-btn {
@@ -253,6 +348,7 @@
 	.header-right {
 		display: flex;
 		align-items: center;
+		justify-content: flex-end;
 		gap: 0.3rem;
 		flex-shrink: 0;
 	}
@@ -279,11 +375,20 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 0.25rem 0;
+		padding: 0.2rem 0;
 		border-bottom: 1px solid var(--pico-muted-border-color);
 		font-size: 0.75rem;
 		cursor: pointer;
 		user-select: none;
+		gap: 0.1rem;
+	}
+
+	.day-label-row {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.3rem;
+		line-height: 1;
 	}
 
 	.nav-label {
@@ -300,17 +405,17 @@
 	}
 
 	.dom {
-		font-size: 1.1rem;
+		font-size: 0.92rem;
 		font-weight: 600;
-		line-height: 1.4;
+		line-height: 1;
 	}
 
 	.dom.today {
 		background: var(--pico-primary);
 		color: var(--pico-primary-inverse);
 		border-radius: 50%;
-		width: 1.8rem;
-		height: 1.8rem;
+		width: 1.35rem;
+		height: 1.35rem;
 		display: flex;
 		align-items: center;
 		justify-content: center;

@@ -40,8 +40,10 @@ _CALENDAR_PALETTE = [
 
 
 def _calendar_color(cal_id: str) -> tuple[str, str]:
-    idx = CALENDAR_IDS.index(cal_id) if cal_id in CALENDAR_IDS else (
-        int(__import__("hashlib").md5(cal_id.encode()).hexdigest(), 16)
+    idx = (
+        CALENDAR_IDS.index(cal_id)
+        if cal_id in CALENDAR_IDS
+        else (int(__import__("hashlib").md5(cal_id.encode()).hexdigest(), 16))
     )
     return _CALENDAR_PALETTE[idx % len(_CALENDAR_PALETTE)]
 
@@ -76,14 +78,18 @@ def _fetch_calendar_meta(service, cal_id: str) -> dict:
 
 
 def _fetch_events(service, cal_id: str, time_min: str, time_max: str) -> list:
-    result = service.events().list(
-        calendarId=cal_id,
-        timeMin=time_min,
-        timeMax=time_max,
-        maxResults=250,
-        singleEvents=True,
-        orderBy="startTime",
-    ).execute()
+    result = (
+        service.events()
+        .list(
+            calendarId=cal_id,
+            timeMin=time_min,
+            timeMax=time_max,
+            maxResults=250,
+            singleEvents=True,
+            orderBy="startTime",
+        )
+        .execute()
+    )
     return result.get("items", [])
 
 
@@ -97,7 +103,11 @@ def main() -> int:
     now = datetime.now(timezone.utc)
     now_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     time_min = sys.argv[1] if len(sys.argv) > 1 else _default_event_time_min(now)
-    time_max = sys.argv[2] if len(sys.argv) > 2 else (now_month + timedelta(days=150)).isoformat()
+    time_max = (
+        sys.argv[2]
+        if len(sys.argv) > 2
+        else (now_month + timedelta(days=150)).isoformat()
+    )
 
     has_sa = bool(SERVICE_ACCOUNT_FILE) and os.path.exists(SERVICE_ACCOUNT_FILE)
     prefer_sa = has_sa
@@ -116,7 +126,9 @@ def main() -> int:
                 items = []
             else:
                 try:
-                    items = _fetch_events(_build_service(True), cal_id, time_min, time_max)
+                    items = _fetch_events(
+                        _build_service(True), cal_id, time_min, time_max
+                    )
                 except Exception as exc2:
                     print(
                         f"Error fetching events for {cal_id}: {exc} (retry with service account failed: {exc2})",
@@ -132,7 +144,11 @@ def main() -> int:
             event["calendarSummary"] = meta.get("summary", "")
             merged.append(event)
 
-    merged.sort(key=lambda ev: ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date") or "")
+    merged.sort(
+        key=lambda ev: (
+            ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date") or ""
+        )
+    )
     print(json.dumps({"events": merged, "calendars": meta_results}))
     return 0
 

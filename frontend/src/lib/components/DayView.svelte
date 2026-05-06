@@ -10,12 +10,16 @@
 	import EventPopup from './EventPopup.svelte';
 	import AllDayEventChip from './AllDayEventChip.svelte';
 	import TimedEventChip from './TimedEventChip.svelte';
+	import { createPullToRefresh, defaultHourScrollTop, isEditableTarget, scrollHoursBy } from '$lib/calendarInteractions';
+	import { onMount } from 'svelte';
 
 	export let events: CalendarEvent[];
 	export let anchor: Date;
 	export let weather: WeatherRecord | null = null;
+	export let refresh: (() => Promise<void>) | undefined = undefined;
 
 	let popupEvent: CalendarEvent | null = null;
+	let scrollArea: HTMLDivElement;
 
 	$: day = startOfDay(anchor);
 	$: dayEvents = eventsOnDay(events, day);
@@ -47,6 +51,8 @@
 	const HOUR_HEIGHT = 64;
 	const START_HOUR = 6;
 	const END_HOUR = 23;
+	const DEFAULT_VISIBLE_START_HOUR = 8;
+	const DEFAULT_VISIBLE_END_HOUR = 20;
 
 	function topPx(start: Date): number {
 		const minutes = start.getHours() * 60 + start.getMinutes() - START_HOUR * 60;
@@ -106,6 +112,20 @@
 	const hours = Array.from({ length: END_HOUR - START_HOUR + 1 }, (_, i) => START_HOUR + i);
 
 	$: isToday = day.toDateString() === today.toDateString();
+	const pullToRefresh = createPullToRefresh(() => refresh?.() ?? Promise.resolve());
+
+	onMount(() => {
+		if (scrollArea) {
+			scrollArea.scrollTop = defaultHourScrollTop(
+				START_HOUR,
+				DEFAULT_VISIBLE_START_HOUR,
+				DEFAULT_VISIBLE_END_HOUR,
+				END_HOUR,
+				HOUR_HEIGHT,
+				scrollArea.clientHeight,
+			);
+		}
+	});
 
 	function shouldHandleCalendarKeys(event: KeyboardEvent): boolean {
 		if (popupEvent || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
@@ -116,6 +136,26 @@
 
 	function onWindowKeydown(event: KeyboardEvent) {
 		if (!shouldHandleCalendarKeys(event)) return;
+		if (scrollArea && event.key === 'PageDown') {
+			event.preventDefault();
+			scrollHoursBy(scrollArea, 3, HOUR_HEIGHT);
+			return;
+		}
+		if (scrollArea && event.key === 'PageUp') {
+			event.preventDefault();
+			scrollHoursBy(scrollArea, -3, HOUR_HEIGHT);
+			return;
+		}
+		if (scrollArea && event.key === 'Home' && !isEditableTarget(event.target)) {
+			event.preventDefault();
+			scrollArea.scrollTo({ top: 0, behavior: 'smooth' });
+			return;
+		}
+		if (scrollArea && event.key === 'End' && !isEditableTarget(event.target)) {
+			event.preventDefault();
+			scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior: 'smooth' });
+			return;
+		}
 		if (event.key === 'ArrowLeft') {
 			event.preventDefault();
 			anchor = addDays(anchor, -1);
@@ -161,7 +201,13 @@
 		</div>
 	{/if}
 
-	<div class="scroll-area">
+	<div
+		class="scroll-area"
+		bind:this={scrollArea}
+		on:touchstart={(event) => pullToRefresh.onTouchStart(event, scrollArea?.scrollTop ?? 0)}
+		on:touchmove={(event) => pullToRefresh.onTouchMove(event, scrollArea?.scrollTop ?? 0)}
+		on:touchend={pullToRefresh.onTouchEnd}
+	>
 		<div class="time-grid" style="height: {(END_HOUR - START_HOUR + 1) * HOUR_HEIGHT}px">
 			{#each hours as h}
 				<div class="hour-row" style="top: {(h - START_HOUR) * HOUR_HEIGHT}px; height: {HOUR_HEIGHT}px">

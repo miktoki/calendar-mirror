@@ -9,10 +9,12 @@
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
 	import { onMount, onDestroy } from 'svelte';
+	import { createPullToRefresh } from '$lib/calendarInteractions';
 
 	export let events: CalendarEvent[];
 	export let anchor: Date;
 	export let weather: WeatherRecord | null = null;
+	export let refresh: (() => Promise<void>) | undefined = undefined;
 
 	const today = new Date();
 	const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -26,6 +28,7 @@
 	let gridEl: HTMLElement;
 	let cellHeight = 80;
 	let ro: ResizeObserver;
+	const pullToRefresh = createPullToRefresh(() => refresh?.() ?? Promise.resolve());
 
 	// Max chips that visually fit in a cell (no overflow line reserved yet;
 	// per-cell logic in template reserves 1 slot for "+N more" when needed).
@@ -83,10 +86,17 @@
 
 <svelte:window on:keydown={onWindowKeydown} />
 
-<div class="month-view">
+<div
+	class="month-view"
+	on:touchstart={(event) => pullToRefresh.onTouchStart(event, 0)}
+	on:touchmove={(event) => pullToRefresh.onTouchMove(event, 0)}
+	on:touchend={pullToRefresh.onTouchEnd}
+>
 	<header class="month-header">
-		<button class="outline nav-btn" on:click={() => (anchor = addMonths(anchor, -1))}>‹</button>
-		<span class="period">{formatMonthYear(anchor)}</span>
+		<div class="header-left">
+			<button class="outline nav-btn" on:click={() => (anchor = addMonths(anchor, -1))}>‹</button>
+		</div>
+		<h2 class="period">{formatMonthYear(anchor)}</h2>
 		<div class="header-right">
 			{#if !isCurrentMonth}
 				<button class="outline today-btn" on:click={() => (anchor = new Date())}>Today</button>
@@ -155,18 +165,25 @@
 	}
 
 	.month-header {
-		display: flex;
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
 		align-items: center;
-		justify-content: space-between;
-		padding: 0.4rem 1rem;
+		padding: 0.5rem 1rem;
 		flex-shrink: 0;
+		gap: 0.5rem;
+	}
+
+	.header-left {
+		display: flex;
+		justify-content: flex-start;
 	}
 
 	.period {
-		font-size: 1rem;
+		margin: 0;
+		font-size: 1.2rem;
 		font-weight: 600;
-		flex: 1;
 		text-align: center;
+		line-height: 1.2;
 	}
 
 	.nav-btn {
@@ -178,6 +195,7 @@
 	.header-right {
 		display: flex;
 		align-items: center;
+		justify-content: flex-end;
 		gap: 0.3rem;
 		flex-shrink: 0;
 	}

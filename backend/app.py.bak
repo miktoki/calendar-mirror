@@ -1,28 +1,29 @@
 """FastAPI backend for calendar, weather, todo-list, and counter APIs.
 
 Endpoints defined in this file:
-- GET  /api/events
-- GET  /api/calendars
+- GET /api/events
+- GET /api/calendars
 - POST /api/weather/refresh
-- GET  /api/weather
-- GET  /api/lists
+- GET /api/weather
+- GET /api/lists
 - POST /api/lists
 - DELETE /api/lists/{list_id}
-- GET  /api/lists/{list_id}/items
+- GET /api/lists/{list_id}/items
 - POST /api/lists/{list_id}/items
-- PATCH  /api/items/{item_id}
+- PATCH /api/items/{item_id}
 - DELETE /api/items/{item_id}
-- GET  /api/counters/{list_id}
+- GET /api/counters/{list_id}
 - POST /api/counters/{list_id}/inc
 """
 
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 import asyncio
 import json
 import os
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
-from functools import partial
+import sqlite3
 from typing import Literal
+import hashlib
 
 import httpx
 from dotenv import load_dotenv
@@ -32,30 +33,10 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from pydantic import BaseModel
 
-from db import (
-    BACKGROUND_COLOR,
-    FOREGROUND_COLOR,
-    WEATHER_TTL_SECONDS,
-    _calendar_color,
-    _counter_bucket,
-    _db_connect,
-    _db_init,
-    _default_event_time_min,
-    event_sort_key,
-    rows_as_dicts,
-)
-
 load_dotenv()
 
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 SERVICE_ACCOUNT_FILE = os.environ.get("SERVICE_ACCOUNT_FILE", "")
-MET_NO_LAT = os.environ.get("MET_NO_LAT", "59.9139")
-MET_NO_LON = os.environ.get("MET_NO_LON", "10.7522")
-MET_NO_USER_AGENT = os.environ.get(
-    "MET_NO_USER_AGENT", "surface-calendar/1.0 fakemik2@gmail.com"
-)
-DB_PATH = os.environ["DB_PATH"]
-
 CALENDAR_IDS = [
     cid.strip()
     for cid in os.environ.get(
@@ -64,16 +45,173 @@ CALENDAR_IDS = [
     ).split(",")
     if cid.strip()
 ]
-calendar_color = partial(_calendar_color, CALENDAR_IDS)
-db_connect = partial(_db_connect, DB_PATH)
-db_init = partial(_db_init, DB_PATH, CALENDAR_IDS)
-print(f"Using calendar IDs: {CALENDAR_IDS}", os.environ.get("CALENDAR_IDS"))
+WHITE = "#ffffff"
+FOREGROUND_COLOR =  WHITE
+BACKGROUND_COLOR = "#4285f4"
+
+# Distinct palette for assigning per-calendar colours when the API can't provide them
+_CALENDAR_PALETTE = [
+    # ("#4285f4", "#ffffff"),  # Google blue
+    # ("#0f9d58", "#ffffff"),  # Google green
+    # ("#db4437", "#ffffff"),  # Google red
+    # ("#f4b400", "#1a1a2e"),  # Google yellow
+    # ("#ab47bc", "#ffffff"),  # purple
+    # ("#00acc1", "#ffffff"),  # cyan
+    # ("#ff7043", "#ffffff"),  # deep orange
+    # ("#5c6bc0", "#ffffff"),  # indigo
+
+    ("#3F854D", WHITE),  # Sage
+    ("#039BE5", WHITE),  # Peacock
+    ("#7986CB", WHITE),  # Lavender
+    ("#E67C73", WHITE),  # Tangerine
+    ("#33B679", WHITE),  # Basil
+    ("#F6BF26", WHITE),  # Banana
+    ("#D50000", WHITE),  # Tomato
+    ("#4285F4", WHITE),  # Blueberry
+    ("#8E24AA", WHITE),  # Grape
+    ("#616161", WHITE),  # Graphite
+]
+
+def _calendar_color(cal_id: str) -> tuple[str, str]:
+    """Assign a colour by position in CALENDAR_IDS for maximum distinctiveness."""
+    idx = CALENDAR_IDS.index(cal_id) if cal_id in CALENDAR_IDS else (
+        int(hashlib.md5(cal_id.encode()).hexdigest(), 16)
+    )
+    return _CALENDAR_PALETTE[idx % len(_CALENDAR_PALETTE)]
+
+MET_NO_LAT = os.environ.get("MET_NO_LAT", "59.9139")
+MET_NO_LON = os.environ.get("MET_NO_LON", "10.7522")
+MET_NO_USER_AGENT = os.environ.get("MET_NO_USER_AGENT", "surface-calendar/1.0 fakemik2@gmail.com")
+
+DB_PATH = os.environ.get("DB_PATH", "weather.db")
+
+WEATHER_TTL_SECONDS = 3600
 
 
-def _get_counter_state(conn, list_id: int, now: datetime | None = None) -> dict:
-    if now is None:
-        now = datetime.now(timezone.utc)
-    row = conn.execute("SELECT * FROM todo_lists WHERE id = ?", (list_id,)).fetchone()
+def db_connect() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(row["name"] == column for row in rows)
+
+
+def _default_event_time_min(now: datetime) -> str:
+    now_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    prev_month_start = (now_month - timedelta(days=1)).replace(day=1)
+    return prev_month_start.isoformat()
+
+
+def db_init():
+    with db_connect() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS weather (
+                id         INTEGER PRIMARY KEY CHECK (id = 1),
+                fetched_at TEXT NOT NULL,
+                forecast   TEXT NOT NULL
+            )
+        """)
+        conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS calendars (
+                id               TEXT PRIMARY KEY,
+                summary          TEXT NOT NULL DEFAULT '',
+                background_color TEXT NOT NULL DEFAULT '{BACKGROUND_COLOR}',
+                foreground_color TEXT NOT NULL DEFAULT '{FOREGROUND_COLOR}',
+                updated_at       TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS todo_lists (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        if not _has_column(conn, "todo_lists", "list_type"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN list_type TEXT NOT NULL DEFAULT 'todo'")
+        if not _has_column(conn, "todo_lists", "reset_kind"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN reset_kind TEXT NOT NULL DEFAULT 'none'")
+        if not _has_column(conn, "todo_lists", "week_ends_on"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN week_ends_on INTEGER NOT NULL DEFAULT 0")
+        if not _has_column(conn, "todo_lists", "counter_mode"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN counter_mode TEXT NOT NULL DEFAULT 'normal'")
+        if not _has_column(conn, "todo_lists", "counter_initial"):
+            conn.execute("ALTER TABLE todo_lists ADD COLUMN counter_initial INTEGER NOT NULL DEFAULT 0")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS todo_items (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                list_id    INTEGER NOT NULL REFERENCES todo_lists(id) ON DELETE CASCADE,
+                text       TEXT NOT NULL,
+                done       INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        event_columns = {row["name"] for row in conn.execute("PRAGMA table_info(events)").fetchall()}
+        if event_columns and "calendar_id" not in event_columns:
+            conn.execute("DROP TABLE events")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+                calendar_id TEXT PRIMARY KEY,
+                fetched_at  TEXT NOT NULL,
+                data        TEXT NOT NULL
+            )
+        """)
+        placeholder_fetched_at = datetime.fromtimestamp(0, timezone.utc).isoformat()
+        if CALENDAR_IDS:
+            conn.executemany(
+                """
+                INSERT INTO events (calendar_id, fetched_at, data)
+                VALUES (?, ?, '[]')
+                ON CONFLICT(calendar_id) DO NOTHING
+                """,
+                [(calendar_id, placeholder_fetched_at) for calendar_id in CALENDAR_IDS],
+            )
+            placeholders = ", ".join("?" for _ in CALENDAR_IDS)
+            conn.execute(
+                f"DELETE FROM events WHERE calendar_id NOT IN ({placeholders})",
+                CALENDAR_IDS,
+            )
+        else:
+            conn.execute("DELETE FROM events")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS counter_state (
+                list_id     INTEGER PRIMARY KEY REFERENCES todo_lists(id) ON DELETE CASCADE,
+                bucket      TEXT NOT NULL,
+                value       INTEGER NOT NULL,
+                today       INTEGER NOT NULL DEFAULT 0,
+                updated_at  TEXT NOT NULL
+            )
+        """)
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _counter_bucket(reset_kind: str, week_ends_on: int, now: datetime) -> str:
+    local_now = now.astimezone()
+    if reset_kind == "daily":
+        return local_now.date().isoformat()
+    if reset_kind == "weekly":
+        weekday = (local_now.weekday() + 1) % 7
+        week_start = (week_ends_on + 1) % 7
+        days_since_start = (weekday - week_start) % 7
+        bucket_start = local_now.date() - timedelta(days=days_since_start)
+        return bucket_start.isoformat()
+    if reset_kind == "monthly":
+        return f"{local_now.year:04d}-{local_now.month:02d}"
+    if reset_kind == "yearly":
+        return f"{local_now.year:04d}"
+    return "all-time"
+
+
+def _get_counter_state(conn: sqlite3.Connection, list_id: int, now: datetime | None = None) -> dict:
+    current_time = now or datetime.now(timezone.utc)
+    row = conn.execute(
+        "SELECT * FROM todo_lists WHERE id = ?",
+        (list_id,),
+    ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="counter not found")
     if row["list_type"] != "counter":
@@ -81,9 +219,10 @@ def _get_counter_state(conn, list_id: int, now: datetime | None = None) -> dict:
 
     reset_kind = row["reset_kind"] or "none"
     week_ends_on = row["week_ends_on"] or 0
-    bucket = _counter_bucket(reset_kind, week_ends_on, now)
+    bucket = _counter_bucket(reset_kind, week_ends_on, current_time)
     state = conn.execute(
-        "SELECT * FROM counter_state WHERE list_id = ?", (list_id,)
+        "SELECT * FROM counter_state WHERE list_id = ?",
+        (list_id,),
     ).fetchone()
 
     if not state or state["bucket"] != bucket:
@@ -94,12 +233,12 @@ def _get_counter_state(conn, list_id: int, now: datetime | None = None) -> dict:
             INSERT INTO counter_state (list_id, bucket, value, today, updated_at)
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(list_id) DO UPDATE SET
-                bucket     = excluded.bucket,
-                value      = excluded.value,
-                today      = excluded.today,
+                bucket = excluded.bucket,
+                value = excluded.value,
+                today = excluded.today,
                 updated_at = excluded.updated_at
             """,
-            (list_id, bucket, value, today, now.isoformat()),
+            (list_id, bucket, value, today, current_time.isoformat()),
         )
     else:
         value = state["value"]
@@ -116,80 +255,61 @@ def _get_counter_state(conn, list_id: int, now: datetime | None = None) -> dict:
     }
 
 
-async def _service(
-    loop: asyncio.AbstractEventLoop,
-    *,
-    credentials: service_account.Credentials | None = None,
-    developerKey: str | None = None,
-):
-    """Builds the Google Calendar API service object in a non-blocking way.
-
-    Args:
-        loop: The current event loop.
-        credentials: Google| Nonecredentials for authentication.
-        developerKey: API| Nonekey for authentication.
-
-    """
-    return await loop.run_in_executor(
-        None,
-        lambda: build(
-            "calendar", "v3", credentials=credentials, developerKey=developerKey
-        ),
-    )
-
-
 async def fetch_events_from_google(
-    time_min_override: str | None = None,
-    time_max_override: str | None = None,
+    time_min_override: str|None = None,
+    time_max_override: str|None = None,
 ) -> list:
+
     loop = asyncio.get_running_loop()
+    credentials = GOOGLE_API_KEY
     if SERVICE_ACCOUNT_FILE and os.path.exists(SERVICE_ACCOUNT_FILE):
         credentials = service_account.Credentials.from_service_account_file(
             SERVICE_ACCOUNT_FILE,
             scopes=["https://www.googleapis.com/auth/calendar.readonly"],
         )
-        service = await _service(loop, credentials=credentials)
-    else:
-        service = await _service(loop, developerKey=GOOGLE_API_KEY)
-
+    service = await loop.run_in_executor(
+        None,
+        lambda: build("calendar", "v3", credentials=credentials),
+    )
+    
     now = datetime.now(timezone.utc)
     time_min = time_min_override or _default_event_time_min(now)
     time_max = time_max_override or (now + timedelta(days=150)).isoformat()
     is_default_range = time_min_override is None
 
     async def fetch_calendar_meta(cal_id: str) -> dict:
-        bg, fg = calendar_color(cal_id)
+        bg, fg = _calendar_color(cal_id)
         try:
             result = await loop.run_in_executor(
                 None,
-                lambda: service.calendars().get(calendarId=cal_id).execute(),
+                lambda: service.calendars().get(calendarId=cal_id).execute()
             )
-            summary = result.get("summary", "")
+            return {
+                "id": cal_id,
+                "summary": result.get("summary", ""),
+                "backgroundColor": bg,
+                "foregroundColor": fg,
+            }
         except Exception:
-            summary = ""
-        return {
-            "id": cal_id,
-            "summary": summary,
-            "backgroundColor": bg,
-            "foregroundColor": fg,
-        }
+            return {
+                "id": cal_id,
+                "summary": "",
+                "backgroundColor": bg,
+                "foregroundColor": fg,
+            }
 
     async def fetch_one(cal_id: str) -> tuple[str, list, bool]:
         try:
             result = await loop.run_in_executor(
                 None,
-                lambda: (
-                    service.events()
-                    .list(
-                        calendarId=cal_id,
-                        timeMin=time_min,
-                        timeMax=time_max,
-                        maxResults=250,
-                        singleEvents=True,
-                        orderBy="startTime",
-                    )
-                    .execute()
-                ),
+                lambda: service.events().list(
+                    calendarId=cal_id,
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=250,
+                    singleEvents=True,
+                    orderBy="startTime",
+                ).execute()
             )
             return cal_id, result.get("items", []), True
         except Exception as e:
@@ -202,11 +322,24 @@ async def fetch_events_from_google(
     )
 
     any_succeeded = any(success for _, _, success in event_results)
+
     updated_at = now.isoformat()
+    with db_connect() as conn:
+        for meta in meta_results:
+            conn.execute("""
+                INSERT INTO calendars (id, summary, background_color, foreground_color, updated_at)
+                VALUES (:id, :summary, :backgroundColor, :foregroundColor, :updated_at)
+                ON CONFLICT(id) DO UPDATE SET
+                    summary          = excluded.summary,
+                    background_color = excluded.background_color,
+                    foreground_color = excluded.foreground_color,
+                    updated_at       = excluded.updated_at
+            """, {**meta, "updated_at": updated_at})
+
     color_map = {m["id"]: m for m in meta_results}
 
     merged = []
-    cached_events_by_calendar: dict[str, list] = {}
+    cached_events_by_calendar = {}
     for cal_id, items, success in event_results:
         meta = color_map.get(cal_id, {})
         calendar_events = []
@@ -220,31 +353,19 @@ async def fetch_events_from_google(
         if success:
             cached_events_by_calendar[cal_id] = calendar_events
 
-    merged.sort(key=event_sort_key)
+    def sort_key(ev):
+        s = ev.get("start", {})
+        return s.get("dateTime") or s.get("date") or ""
 
-    with db_connect() as conn:
-        for meta in meta_results:
-            conn.execute(
-                """
-                INSERT INTO calendars (id, summary, background_color, foreground_color, updated_at)
-                VALUES (:id, :summary, :backgroundColor, :foregroundColor, :updated_at)
-                ON CONFLICT(id) DO UPDATE SET
-                    summary          = excluded.summary,
-                    background_color = excluded.background_color,
-                    foreground_color = excluded.foreground_color,
-                    updated_at       = excluded.updated_at
-            """,
-                {**meta, "updated_at": updated_at},
-            )
-
-        if is_default_range and any_succeeded:
+    merged.sort(key=sort_key)
+    if is_default_range and any_succeeded:
+        with db_connect() as conn:
             for cal_id, calendar_events in cached_events_by_calendar.items():
                 conn.execute("DELETE FROM events WHERE calendar_id = ?", (cal_id,))
                 conn.execute(
                     "INSERT INTO events (calendar_id, fetched_at, data) VALUES (?, ?, ?)",
                     (cal_id, now.isoformat(), json.dumps(calendar_events)),
                 )
-
     if not any_succeeded:
         raise RuntimeError("Failed to refresh all calendars; kept cached events")
     return merged
@@ -252,21 +373,19 @@ async def fetch_events_from_google(
 
 def _load_events_from_db() -> tuple[list, datetime | None]:
     with db_connect() as conn:
-        rows = conn.execute(
-            "SELECT fetched_at, data FROM events ORDER BY calendar_id"
-        ).fetchall()
+        rows = conn.execute("SELECT fetched_at, data FROM events ORDER BY calendar_id").fetchall()
     if not rows:
         return [], None
 
     merged = []
-    latest_fetched_at: datetime | None = None
+    latest_fetched_at = None
     for row in rows:
         merged.extend(json.loads(row["data"]))
         fetched_at = datetime.fromisoformat(row["fetched_at"])
         if latest_fetched_at is None or fetched_at > latest_fetched_at:
             latest_fetched_at = fetched_at
 
-    merged.sort(key=event_sort_key)
+    merged.sort(key=lambda ev: ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date") or "")
     return merged, latest_fetched_at
 
 
@@ -294,16 +413,12 @@ async def fetch_and_store_weather():
     resp.raise_for_status()
     fetched_at = datetime.now(timezone.utc).isoformat()
     with db_connect() as conn:
-        conn.execute(
-            """
+        conn.execute("""
             INSERT INTO weather (id, fetched_at, forecast)
             VALUES (1, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                fetched_at = excluded.fetched_at,
-                forecast   = excluded.forecast
-        """,
-            (fetched_at, json.dumps(resp.json())),
-        )
+            ON CONFLICT(id) DO UPDATE SET fetched_at = excluded.fetched_at,
+                                          forecast   = excluded.forecast
+        """, (fetched_at, json.dumps(resp.json())))
     return fetched_at
 
 
@@ -311,13 +426,9 @@ async def weather_refresh_loop():
     while True:
         try:
             with db_connect() as conn:
-                row = conn.execute(
-                    "SELECT fetched_at FROM weather WHERE id = 1"
-                ).fetchone()
+                row = conn.execute("SELECT fetched_at FROM weather WHERE id = 1").fetchone()
             if row:
-                age = datetime.now(timezone.utc) - datetime.fromisoformat(
-                    row["fetched_at"]
-                )
+                age = datetime.now(timezone.utc) - datetime.fromisoformat(row["fetched_at"])
                 remaining = WEATHER_TTL_SECONDS - age.total_seconds()
                 if remaining > 0:
                     await asyncio.sleep(remaining)
@@ -348,22 +459,20 @@ app.add_middleware(
 
 @app.get("/api/events")
 async def events(
-    min: str | None = Query(None, description="ISO8601 start of range"),
-    max: str | None = Query(None, description="ISO8601 end of range"),
+    min: str|None = Query(None, description="ISO8601 start of range"),
+    max: str|None = Query(None, description="ISO8601 end of range"),
 ):
-    db_events, _ = _load_events_from_db()
+    db_events, db_fetched_at = _load_events_from_db()
 
     if min or max:
         now = datetime.now(timezone.utc)
         time_min = min or _default_event_time_min(now)
         time_max = max or (now + timedelta(days=150)).isoformat()
         cached = _filter_events(db_events, time_min, time_max)
-        asyncio.create_task(
-            fetch_events_from_google(
-                time_min_override=min,
-                time_max_override=max,
-            )
-        )
+        asyncio.create_task(fetch_events_from_google(
+            time_min_override=min,
+            time_max_override=max,
+        ))
         return cached
 
     if db_events:
@@ -380,7 +489,7 @@ async def events(
 async def get_calendars():
     with db_connect() as conn:
         rows = conn.execute("SELECT * FROM calendars ORDER BY id").fetchall()
-    return rows_as_dicts(rows)
+    return [dict(r) for r in rows]
 
 
 @app.post("/api/weather/refresh")
@@ -392,13 +501,13 @@ async def weather_refresh():
 @app.get("/api/weather")
 async def weather():
     with db_connect() as conn:
-        row = conn.execute(
-            "SELECT fetched_at, forecast FROM weather WHERE id = 1"
-        ).fetchone()
+        row = conn.execute("SELECT fetched_at, forecast FROM weather WHERE id = 1").fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="no weather data yet")
     return {"fetched_at": row["fetched_at"], "forecast": json.loads(row["forecast"])}
 
+
+# --- Todo lists ---
 
 class ListCreate(BaseModel):
     name: str
@@ -408,10 +517,8 @@ class ListCreate(BaseModel):
     counter_mode: Literal["normal", "negative"] = "normal"
     counter_initial: int = 0
 
-
 class ItemCreate(BaseModel):
     text: str
-
 
 class ItemPatch(BaseModel):
     text: str | None = None
@@ -427,7 +534,7 @@ class CounterDelta(BaseModel):
 async def get_lists():
     with db_connect() as conn:
         rows = conn.execute("SELECT * FROM todo_lists ORDER BY created_at").fetchall()
-    return rows_as_dicts(rows)
+    return [dict(r) for r in rows]
 
 
 @app.post("/api/lists", status_code=201)
@@ -444,14 +551,7 @@ async def create_list(body: ListCreate):
             VALUES (?, ?, ?, ?, ?, ?)
             RETURNING *
             """,
-            (
-                body.name,
-                body.list_type,
-                body.reset_kind,
-                week_ends_on,
-                counter_mode,
-                counter_initial,
-            ),
+            (body.name, body.list_type, body.reset_kind, week_ends_on, counter_mode, counter_initial)
         )
         row = cur.fetchone()
     return dict(row)
@@ -460,6 +560,7 @@ async def create_list(body: ListCreate):
 @app.delete("/api/lists/{list_id}", status_code=204)
 async def delete_list(list_id: int):
     with db_connect() as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
         conn.execute("DELETE FROM todo_lists WHERE id = ?", (list_id,))
 
 
@@ -468,9 +569,9 @@ async def get_items(list_id: int):
     with db_connect() as conn:
         rows = conn.execute(
             "SELECT * FROM todo_items WHERE list_id = ? ORDER BY sort_order, created_at",
-            (list_id,),
+            (list_id,)
         ).fetchall()
-    return rows_as_dicts(rows)
+    return [dict(r) for r in rows]
 
 
 @app.post("/api/lists/{list_id}/items", status_code=201)
@@ -520,9 +621,7 @@ async def increment_counter(list_id: int, body: CounterDelta):
         next_value = state["value"] + delta
         if state["mode"] == "negative":
             if next_value < 0 or next_value > state["initial"]:
-                raise HTTPException(
-                    status_code=409, detail="counter update out of range"
-                )
+                raise HTTPException(status_code=409, detail="counter update out of range")
         elif next_value < 0:
             raise HTTPException(status_code=409, detail="counter update out of range")
         effective_today_delta = delta if state["mode"] == "normal" else -delta
