@@ -8,6 +8,7 @@
 	let refreshing = false;
 	let error = '';
 
+	/** Refresh the weather data and reload the page. */
 	async function doRefresh() {
 		refreshing = true;
 		error = '';
@@ -20,15 +21,17 @@
 			refreshing = false;
 		}
 	}
-
+	/** Convert a weather symbol code to a human-readable label. */
 	function symbolLabel(code: string): string {
 		return code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 	}
 
+	/** Format an ISO string to a human-readable hour. */
 	function formatHour(iso: string): string {
 		return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 	}
 
+	/** Format an ISO string to a human-readable day label. */
 	function formatDayLabel(iso: string): string {
 		return new Date(iso).toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 	}
@@ -41,6 +44,7 @@
 
 	$: days = groupByDay(weather?.forecast?.properties?.timeseries ?? []);
 
+	/** Group time series entries by day, filtering out nighttime hours. */
 	function groupByDay(series: TimeSeries[]): DayGroup[] {
 		const map = new Map<string, TimeSeries[]>();
 		for (const ts of series) {
@@ -57,6 +61,7 @@
 		return groups.slice(0, 7);
 	}
 
+	/** Get the most relevant weather symbol code for a time series entry. */
 	function getSymbol(ts: TimeSeries): string {
 		return (
 			ts.data.next_1_hours?.summary.symbol_code ??
@@ -66,11 +71,13 @@
 		);
 	}
 
+	/** Get the air temperature for a time series entry. */
 	function getTemp(ts: TimeSeries): number | null {
 		const t = ts.data.instant.details['air_temperature'];
 		return t !== undefined ? Math.round(t) : null;
 	}
 
+	/** Get the precipitation amount for a time series entry. */
 	function getRain(ts: TimeSeries): number | null {
 		const r =
 			ts.data.next_1_hours?.details['precipitation_amount'] ??
@@ -79,6 +86,7 @@
 		return r !== null ? Math.round(r * 10) / 10 : null;
 	}
 
+	/** Get the icon URL for a weather symbol code. */
 	function iconUrl(code: string): string | null {
 		return wxIconUrl(code);
 	}

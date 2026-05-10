@@ -1,3 +1,4 @@
+
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 export interface CalendarEvent {
@@ -40,6 +41,16 @@ const EVENT_COLORS: Record<string, { bg: string; fg: string }> = {
 const DEFAULT_COLOR = { bg: 'var(--pico-primary-background)', fg: 'var(--pico-primary-inverse)' };
 
 export function eventColor(ev: CalendarEvent): { bg: string; fg: string } {
+	// If event title starts with jo, mi, mh, ts, th (as standalone case insensitive word), set color to maroon, olive, navy, teal, orange respectively
+	const prefix = ev.summary.match(/^(jo|mi|mh|ts|th)\b/i)?.[1].toLowerCase();
+	switch (prefix) {
+		case 'jo': return { bg: '#800000', fg: '#ffffff' }; // maroon
+		case 'mi': return { bg: '#808000', fg: '#ffffff' }; // olive
+		case 'mh': return { bg: '#000080', fg: '#ffffff' }; // navy
+		case 'ts': return { bg: '#002424', fg: '#ffffff' }; // near black
+		case 'th': return { bg: '#a85400', fg: '#ffffff' }; // dark orange
+		default: break;
+	}
 	// Prefer the event colour first to keep the original Google Calendar palette.
 	if (ev.colorId && EVENT_COLORS[ev.colorId]) return EVENT_COLORS[ev.colorId];
 	if (ev.calendarColor) {
@@ -117,8 +128,8 @@ async function readJsonOrThrow<T>(res: Response, context: string): Promise<T> {
 
 export async function fetchEvents(min?: Date, max?: Date, signal?: AbortSignal): Promise<CalendarEvent[]> {
 	const url = new URL(`${BASE}/api/events`, window.location.href);
-	if (min) url.searchParams.set('min', min.toISOString());
-	if (max) url.searchParams.set('max', max.toISOString());
+	if (min) url.searchParams.set('event_min', min.toISOString());
+	if (max) url.searchParams.set('event_max', max.toISOString());
 	const res = await fetch(url.toString(), { signal });
 	return readJsonOrThrow<CalendarEvent[]>(res, 'Failed to fetch events');
 }

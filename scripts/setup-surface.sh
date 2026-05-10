@@ -94,4 +94,3 @@ sudo systemctl restart surface-calendar-backend.service
 
 echo "Setup complete."
 echo "App: http://surface.local:8080"
-echo "Refresh weather: curl -X POST http://surface.local:8080/api/weather/refresh"

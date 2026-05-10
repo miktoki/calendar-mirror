@@ -9,9 +9,10 @@
 	import WeatherView from '$lib/components/WeatherView.svelte';
 	import TodoView from '$lib/components/TodoView.svelte';
 
-	const STALE_MS = 5 * 60 * 1000;
-	const RANGE_COOLDOWN_MS = 30 * 1000;
-	const WEATHER_STALE_MS = 60 * 60 * 1000;
+	const STALE_MS = 1 * 60 * 1000; // 1 minute
+	const MINUTE_MS = 60 * 1000;
+	const RANGE_COOLDOWN_MS = 30 * 1000; // 30 sec
+	const WEATHER_STALE_MS = 60 * 60 * 1000; // 1 hour
 	const ANCHOR_KEY = 'rpi-calendar-anchor';
 
 	let events: CalendarEvent[] = [];
@@ -21,6 +22,7 @@
 	let loadError = '';
 	let lastFetchedAt = 0;
 	let lastRangeFetchAt = 0;
+	let visibilityState = document.visibilityState;
 	let mounted = false;
 	let weatherInterval: ReturnType<typeof setInterval> | null = null;
 	let refreshInFlight = false;
@@ -30,11 +32,12 @@
 	let fetchedMin: Date | null = null;
 	let fetchedMax: Date | null = null;
 
+	/** Save the current anchor date to localStorage. */
 	function saveAnchor(d: Date) {
 		if (!mounted) return;
 		localStorage.setItem(ANCHOR_KEY, d.toISOString());
 	}
-
+	/** Load the anchor date from localStorage or fallback to the current date. */
 	function loadAnchor(): Date {
 		const stored = localStorage.getItem(ANCHOR_KEY);
 		if (stored) {
@@ -125,7 +128,7 @@
 	async function refreshWeatherIfNeeded() {
 		if (weather) {
 			const age = Date.now() - new Date(weather.fetched_at).getTime();
-			if (age < WEATHER_STALE_MS) return;
+			if (age < WEATHER_STALE_MS || visibilityState !== 'visible') return;
 		}
 		try {
 			weather = await fetchWeather();
@@ -166,6 +169,7 @@
 	}
 
 	function onVisibilityChange() {
+		visibilityState = document.visibilityState;
 		if (document.visibilityState === 'visible' && Date.now() - lastFetchedAt > STALE_MS) {
 			refresh();
 		}
@@ -186,6 +190,7 @@
 		window.dispatchEvent(new CustomEvent('view-switcher:toggle'));
 	}
 
+	/** Initialize the app: read URL and localStorage state, fetch initial data, set up intervals and event listeners. */
 	onMount(() => {
 		const urlView = readViewFromUrl();
 		if (urlView) currentView.set(urlView);
@@ -196,10 +201,10 @@
 		currentView.subscribe((v) => syncViewToUrl(v));
 
 		refresh();
-		weatherInterval = setInterval(refreshWeatherIfNeeded, 60 * 1000);
+		weatherInterval = setInterval(refreshWeatherIfNeeded, MINUTE_MS);
 		document.addEventListener('visibilitychange', onVisibilityChange);
 	});
-
+	/** Clean up intervals and event listeners on unmount. */
 	onDestroy(() => {
 		document.removeEventListener('visibilitychange', onVisibilityChange);
 		if (weatherInterval) clearInterval(weatherInterval);

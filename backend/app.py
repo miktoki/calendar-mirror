@@ -348,25 +348,25 @@ app.add_middleware(
 
 @app.get("/api/events")
 async def events(
-    min: str | None = Query(None, description="ISO8601 start of range"),
-    max: str | None = Query(None, description="ISO8601 end of range"),
+    event_min: str | None = Query(None, description="ISO8601 start of range"),
+    event_max: str | None = Query(None, description="ISO8601 end of range"),
 ):
     db_events, _ = _load_events_from_db()
 
-    if min or max:
+    if event_min or event_max:
         now = datetime.now(timezone.utc)
-        time_min = min or _default_event_time_min(now)
-        time_max = max or (now + timedelta(days=150)).isoformat()
+        time_min = event_min or _default_event_time_min(now)
+        time_max = event_max or (now + timedelta(days=150)).isoformat()
         cached = _filter_events(db_events, time_min, time_max)
         asyncio.create_task(
             fetch_events_from_google(
-                time_min_override=min,
-                time_max_override=max,
+                time_min_override=event_min,
+                time_max_override=event_max,
             )
         )
         return cached
 
-    if db_events:
+    if db_events:  # if already have events in DB, return them immediately and refresh in background
         asyncio.create_task(fetch_events_from_google())
         return db_events
 
