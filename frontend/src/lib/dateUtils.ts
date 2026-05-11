@@ -197,7 +197,9 @@ export function isoWeekNumber(d: Date): number {
 	const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
 	return Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
-
+export function time24h(d: number|string|Date): string {
+	return (new Date(d)).toLocaleTimeString(undefined, { hour12: false });
+}
 export function eventsOnDay(events: CalendarEvent[], day: Date): CalendarEvent[] {
 	const dayStr = localDateStr(day);
 	return events.filter((ev) => {

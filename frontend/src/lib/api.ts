@@ -60,7 +60,7 @@ export function eventColor(ev: CalendarEvent): { bg: string; fg: string } {
 }
 
 export interface WeatherRecord {
-	fetched_at: string;
+	fetched_at: string|number;
 	forecast: MetForecast;
 }
 

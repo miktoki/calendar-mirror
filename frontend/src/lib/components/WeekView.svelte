@@ -5,7 +5,10 @@
 	import {
 		isAllDay, formatTime, isSameDay,
 		eventsOnDay, startOfWeek, addDays, formatDate, formatMonthYear, localDateStr,
-		isoWeekNumber, timedSegmentsForDay, layoutOverlappingSegments, timedEventChipContent, plainTextFromHtml
+		isoWeekNumber, timedSegmentsForDay, layoutOverlappingSegments, timedEventChipContent, plainTextFromHtml,
+
+        time24h
+
 	} from '$lib/dateUtils';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
@@ -20,6 +23,7 @@
 	export let anchor: Date;
 	export let weather: WeatherRecord | null = null;
 	export let refresh: (() => Promise<void>) | undefined = undefined;
+	export let lastFetchedAt: number = 0;
 
 	let popupEvent: CalendarEvent | null = null;
 	let scrollRow: HTMLDivElement;
@@ -197,6 +201,9 @@
 			<span class="period-week-number" aria-hidden="true">W{weekNumber}</span>
 		</button>
 		<div class="header-right">
+			{#if lastFetchedAt}
+				<span class="updated">Updated {time24h(lastFetchedAt)}</span>
+			{/if}
 			{#if !isCurrentWeek}
 				<button class="outline today-btn" on:click={() => (anchor = new Date())}>Today</button>
 			{/if}
@@ -351,6 +358,11 @@
 		justify-content: flex-end;
 		gap: 0.3rem;
 		flex-shrink: 0;
+	}
+
+	.updated {
+		font-size: 0.75rem;
+		color: var(--pico-muted-color);
 	}
 
 	.today-btn {

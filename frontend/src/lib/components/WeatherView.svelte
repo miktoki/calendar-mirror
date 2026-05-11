@@ -3,6 +3,7 @@
 	import { rebootServer, refreshWeather } from '$lib/api';
 	import { wxIconUrl } from '$lib/wxIcons';
 	import { longpress } from '$lib/longpress';
+    import { time24h } from '$lib/dateUtils';
 
 	export let weather: WeatherRecord | null;
 
@@ -102,7 +103,7 @@
 		<h2>Weather Forecast</h2>
 		<div class="header-right">
 			{#if weather}
-				<span class="updated">Updated {new Date(weather.fetched_at).toLocaleString()}</span>
+				<span class="updated">Updated {time24h(weather.fetched_at)}</span>
 			{/if}
 			<button class="outline" on:click={doRefresh} disabled={refreshing}>
 				{refreshing ? 'Refreshing…' : '↻ Refresh'}

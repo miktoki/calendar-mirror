@@ -3,7 +3,10 @@
 	import {
 		eventStart, eventEnd, isAllDay, formatTime, formatDate,
 		eventsOnDay, addDays, startOfDay, localDateStr, timedSegmentsForDay, layoutOverlappingSegments,
-		timedEventChipContent, plainTextFromHtml
+		timedEventChipContent, plainTextFromHtml,
+
+        time24h
+
 	} from '$lib/dateUtils';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
@@ -17,6 +20,7 @@
 	export let anchor: Date;
 	export let weather: WeatherRecord | null = null;
 	export let refresh: (() => Promise<void>) | undefined = undefined;
+	export let lastFetchedAt: number = 0;
 
 	let popupEvent: CalendarEvent | null = null;
 	let scrollArea: HTMLDivElement;
@@ -183,6 +187,9 @@
 		</div>
 		<h2 class="nav-label" on:click={() => currentView.set('week')}>{formatDate(day)}</h2>
 		<div class="header-right">
+			{#if lastFetchedAt}
+				<span class="updated">Updated {time24h(lastFetchedAt)}</span>
+			{/if}
 			{#if !isToday}
 				<button class="outline today-btn" on:click={() => (anchor = new Date())}>Today</button>
 			{/if}
@@ -278,6 +285,11 @@
 		align-items: center;
 		justify-content: flex-end;
 		gap: 0.3rem;
+	}
+
+	.updated {
+		font-size: 0.75rem;
+		color: var(--pico-muted-color);
 	}
 
 	.today-btn {

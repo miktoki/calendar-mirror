@@ -222,11 +222,11 @@
 {/if}
 
 {#if $currentView === 'day'}
-	<DayView {events} {weather} {refresh} bind:anchor />
+	<DayView {events} {weather} {refresh} {lastFetchedAt} bind:anchor />
 {:else if $currentView === 'week'}
-	<WeekView {events} {weather} {calendars} {refresh} bind:anchor />
+	<WeekView {events} {weather} {calendars} {refresh} {lastFetchedAt} bind:anchor />
 {:else if $currentView === 'month'}
-	<MonthView {events} {weather} {refresh} bind:anchor />
+	<MonthView {events} {weather} {refresh} {lastFetchedAt} bind:anchor />
 {:else if $currentView === 'weather'}
 	<WeatherView {weather} />
 {:else if $currentView === 'todo'}
