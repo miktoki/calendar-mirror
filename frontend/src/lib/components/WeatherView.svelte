@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { WeatherRecord, TimeSeries } from '$lib/api';
-	import { refreshWeather } from '$lib/api';
+	import { rebootServer, refreshWeather } from '$lib/api';
 	import { wxIconUrl } from '$lib/wxIcons';
+	import { longpress } from '$lib/longpress';
 
 	export let weather: WeatherRecord | null;
 
@@ -20,6 +21,9 @@
 		} finally {
 			refreshing = false;
 		}
+	}
+	async function placeholder() {
+		
 	}
 	/** Convert a weather symbol code to a human-readable label. */
 	function symbolLabel(code: string): string {
@@ -102,6 +106,9 @@
 			{/if}
 			<button class="outline" on:click={doRefresh} disabled={refreshing}>
 				{refreshing ? 'Refreshing…' : '↻ Refresh'}
+			</button>
+			<button class="outline" on:click={rebootServer}>
+				{'⏻ Reboot'}
 			</button>
 		</div>
 	</header>

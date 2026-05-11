@@ -534,3 +534,9 @@ async def increment_counter(list_id: int, body: CounterDelta):
             (value, today, now, list_id),
         )
     return {"ok": True, "value": value, "today": today}
+
+
+@app.post("/api/sys/reboot")
+async def reboot_system():
+    os.system("systemctl reboot")
+    return {"ok": True}

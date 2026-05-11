@@ -216,3 +216,7 @@ export async function deleteItem(id: number): Promise<void> {
 	const res = await fetch(`${BASE}/api/items/${id}`, { method: 'DELETE' });
 	if (!res.ok) throw new Error(`Failed to delete item: ${res.status}`);
 }
+export async function rebootServer(): Promise<void> {
+	const res = await fetch(`${BASE}/api/sys/reboot`, { method: 'POST' });
+	if (!res.ok) throw new Error(`Failed to reboot server: ${res.status}`);
+}
