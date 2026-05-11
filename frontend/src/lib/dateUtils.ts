@@ -198,7 +198,7 @@ export function isoWeekNumber(d: Date): number {
 	return Math.ceil(((tmp.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 export function time24h(d: number|string|Date): string {
-	return (new Date(d)).toLocaleTimeString(undefined, { hour12: false });
+	return (new Date(d)).toLocaleString(undefined, {hour12: false});
 }
 export function eventsOnDay(events: CalendarEvent[], day: Date): CalendarEvent[] {
 	const dayStr = localDateStr(day);

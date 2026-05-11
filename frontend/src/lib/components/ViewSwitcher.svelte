@@ -8,6 +8,7 @@
 		{ id: 'month',   label: 'Month',   icon: '▦▦▦' },
 		{ id: 'weather', label: 'Weather', icon: '☁' },
 		{ id: 'todo',    label: 'Todo',    icon: '✓' },
+	{ id: 'recipes', label: 'Recipes', icon: '🍴' },
 	];
 
 	let open = false;
@@ -24,6 +25,7 @@
 		m: 'month',
 		h: 'weather',
 		t: 'todo',
+		r: 'recipes',
 	};
 
 	function closeSwitcher() {

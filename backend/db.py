@@ -157,4 +157,37 @@ def _db_init(db_path: str, calendar_ids: list[str]) -> None:
                 updated_at  TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipes (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                title      TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_ingredient_groups (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                recipe_id  INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+                description TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_ingredients (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id   INTEGER NOT NULL REFERENCES recipe_ingredient_groups(id) ON DELETE CASCADE,
+                name       TEXT NOT NULL,
+                amount     REAL NOT NULL DEFAULT 0,
+                unit       TEXT NOT NULL DEFAULT '',
+                sort_order INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_instructions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                recipe_id  INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+                text       TEXT NOT NULL,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            )
+        """)
         conn.execute("PRAGMA foreign_keys = ON")

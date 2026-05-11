@@ -220,3 +220,77 @@ export async function rebootServer(): Promise<void> {
 	const res = await fetch(`${BASE}/api/sys/reboot`, { method: 'POST' });
 	if (!res.ok) throw new Error(`Failed to reboot server: ${res.status}`);
 }
+
+export interface RecipeSummary {
+	id: number;
+	title: string;
+	created_at: string;
+}
+
+export interface RecipeIngredient {
+	id: number;
+	group_id: number;
+	name: string;
+	amount: number;
+	unit: string;
+	sort_order: number;
+}
+
+export interface RecipeIngredientGroup {
+	id: number;
+	recipe_id: number;
+	description: string;
+	sort_order: number;
+	ingredients: RecipeIngredient[];
+}
+
+export interface RecipeInstruction {
+	id: number;
+	recipe_id: number;
+	text: string;
+	sort_order: number;
+}
+
+export interface Recipe extends RecipeSummary {
+	groups: RecipeIngredientGroup[];
+	instructions: RecipeInstruction[];
+}
+
+export async function fetchRecipes(): Promise<RecipeSummary[]> {
+	const res = await fetch(`${BASE}/api/recipes`);
+	return readJsonOrThrow<RecipeSummary[]>(res, 'Failed to fetch recipes');
+}
+
+export async function fetchRecipe(id: number): Promise<Recipe> {
+	const res = await fetch(`${BASE}/api/recipes/${id}`);
+	return readJsonOrThrow<Recipe>(res, 'Failed to fetch recipe');
+}
+
+type RecipePayload = {
+	title: string;
+	groups: Array<{ description: string; ingredients: Array<{ name: string; amount: number; unit: string }> }>;
+	instructions: Array<{ text: string }>;
+};
+
+export async function createRecipe(body: RecipePayload): Promise<RecipeSummary> {
+	const res = await fetch(`${BASE}/api/recipes`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	});
+	return readJsonOrThrow<RecipeSummary>(res, 'Failed to create recipe');
+}
+
+export async function updateRecipe(id: number, body: RecipePayload): Promise<Recipe> {
+	const res = await fetch(`${BASE}/api/recipes/${id}`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	});
+	return readJsonOrThrow<Recipe>(res, 'Failed to update recipe');
+}
+
+export async function deleteRecipe(id: number): Promise<void> {
+	const res = await fetch(`${BASE}/api/recipes/${id}`, { method: 'DELETE' });
+	if (!res.ok) throw new Error(`Failed to delete recipe: ${res.status}`);
+}

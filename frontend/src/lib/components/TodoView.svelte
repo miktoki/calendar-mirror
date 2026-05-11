@@ -8,6 +8,7 @@
 	import { onMount } from 'svelte';
 	import CounterPanel from './CounterPanel.svelte';
 	import TodoListPanel from './TodoListPanel.svelte';
+	import Sidebar from './Sidebar.svelte';
 
 	type CounterButton = {
 		label: string;
@@ -260,27 +261,18 @@
 </script>
 
 <div class="todo-view">
-	<aside class="list-sidebar">
-		<div class="sidebar-header">
-			<div class="sidebar-title">Lists</div>
-			<button
-				type="button"
-				class="outline toggle-create"
-				on:click={() => (showCreate = !showCreate)}
-				aria-expanded={showCreate}
-			>
-				{showCreate ? 'Done' : 'Edit'}
-			</button>
-		</div>
-		{#each lists as list}
-			<button
-				type="button"
-				class="list-tab"
-				class:active={openListId === list.id}
-				class:selected={activeListIds.includes(list.id)}
-				on:click={() => selectList(list.id)}
-			>
-				<span class="list-name">{list.name}</span>
+	<Sidebar
+		title="Lists"
+		items={lists.map((l) => ({ id: l.id, label: l.name }))}
+		activeId={openListId}
+		secondaryIds={activeListIds}
+		bind:showCreate
+		onSelect={selectList}
+		onDelete={removeList}
+	>
+		<svelte:fragment slot="item-meta" let:item>
+			{@const list = lists.find((l) => l.id === item.id)}
+			{#if list}
 				<span class="list-meta">
 					<span class="badge" title={typeTitle(list)}>
 						{#if (list.list_type ?? 'todo') === 'counter'}
@@ -299,19 +291,10 @@
 						</span>
 					{/if}
 				</span>
-				{#if showCreate}
-					<span
-						class="delete-btn delete-btn--list"
-						role="button"
-						tabindex="0"
-						aria-label="Delete list"
-						on:click|stopPropagation={() => removeList(list.id)}
-						on:keydown|stopPropagation={(e) => (e.key === 'Enter' || e.key === ' ') && removeList(list.id)}
-					>✕</span>
-				{/if}
-			</button>
-		{/each}
-		{#if showCreate}
+			{/if}
+		</svelte:fragment>
+
+		<svelte:fragment slot="create-form">
 			<form class="new-list-form" on:submit|preventDefault={addList}>
 				<div class="field">
 					<div class="field-label">Type</div>
@@ -378,8 +361,8 @@
 				</div>
 				<button type="submit" class="outline create-btn">Create</button>
 			</form>
-		{/if}
-	</aside>
+		</svelte:fragment>
+	</Sidebar>
 
 	<main class="list-content">
 		{#if activeListIds.length}
@@ -423,77 +406,6 @@
 		display: flex;
 		height: 100vh;
 		overflow: hidden;
-	}
-
-	.list-sidebar {
-		width: 14rem;
-		flex-shrink: 0;
-		border-right: 1px solid var(--pico-muted-border-color);
-		display: flex;
-		flex-direction: column;
-		overflow-y: auto;
-	}
-
-	.sidebar-header {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 0.5rem;
-		padding: 0.5rem 0.6rem;
-		border-bottom: 1px solid var(--pico-muted-border-color);
-		position: sticky;
-		top: 0;
-		background: var(--pico-background-color);
-		z-index: 1;
-	}
-
-	.sidebar-title {
-		font-size: 0.85rem;
-		opacity: 0.7;
-		font-weight: 600;
-		line-height: 1.1;
-	}
-
-	.toggle-create {
-		font-size: 0.75rem;
-		padding: 0.2rem 0.45rem;
-		line-height: 1.1;
-		align-self: baseline;
-	}
-
-	.list-tab {
-		display: flex;
-		align-items: center;
-		padding: 0.6rem 0.8rem;
-		cursor: pointer;
-		border-bottom: 1px solid var(--pico-muted-border-color);
-		user-select: none;
-		background: transparent;
-		border-left: none;
-		border-right: none;
-		gap: 0.55rem;
-		position: relative;
-		padding-right: 2.2rem;
-	}
-
-	.list-tab.active {
-		background: var(--pico-primary-background);
-	}
-
-	.list-tab.selected {
-		background: color-mix(in srgb, var(--pico-primary) 12%, transparent);
-	}
-
-	.list-tab.selected.active {
-		background: color-mix(in srgb, var(--pico-primary) 20%, transparent);
-	}
-
-	.list-name {
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-size: 0.9rem;
 	}
 
 	.list-meta {
@@ -543,9 +455,6 @@
 	.small-input {
 		font-size: 0.8rem;
 		padding: 0.2rem 0.35rem;
-	}
-
-	.small-input {
 		width: 6rem;
 	}
 
@@ -559,6 +468,10 @@
 		font-size: 0.8rem;
 		outline: none;
 		color: inherit;
+	}
+
+	.new-list-input:focus {
+		border-bottom-color: var(--pico-primary);
 	}
 
 	:global(.badge) {
@@ -586,10 +499,6 @@
 		opacity: 0.72;
 	}
 
-	.new-list-input:focus {
-		border-bottom-color: var(--pico-primary);
-	}
-
 	.list-content {
 		flex: 1;
 		display: flex;
@@ -608,17 +517,6 @@
 		align-content: start;
 		padding-bottom: 0.5rem;
 		grid-auto-flow: dense;
-	}
-
-	.delete-btn--list {
-		font-size: 1.25rem;
-		padding: 0.15rem 0.35rem;
-		opacity: 0.6;
-	}
-
-	.delete-btn:hover {
-		opacity: 1;
-		color: var(--pico-del-color);
 	}
 
 	:global(.todo-panel) {

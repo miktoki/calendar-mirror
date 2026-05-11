@@ -8,6 +8,7 @@
 	import MonthView from '$lib/components/MonthView.svelte';
 	import WeatherView from '$lib/components/WeatherView.svelte';
 	import TodoView from '$lib/components/TodoView.svelte';
+	import RecipesView from '$lib/components/RecipesView.svelte';
 
 	const STALE_MS = 1 * 60 * 1000; // 1 minute
 	const MINUTE_MS = 60 * 1000;
@@ -231,6 +232,8 @@
 	<WeatherView {weather} />
 {:else if $currentView === 'todo'}
 	<TodoView />
+{:else if $currentView === 'recipes'}
+	<RecipesView />
 {/if}
 
 <style>

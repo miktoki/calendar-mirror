@@ -540,3 +540,128 @@ async def increment_counter(list_id: int, body: CounterDelta):
 async def reboot_system():
     os.system("systemctl reboot")
     return {"ok": True}
+
+
+class IngredientCreate(BaseModel):
+    name: str
+    amount: float = 0
+    unit: str = ""
+
+
+class IngredientGroupCreate(BaseModel):
+    description: str = ""
+    ingredients: list[IngredientCreate] = []
+
+
+class InstructionCreate(BaseModel):
+    text: str
+
+
+class RecipeCreate(BaseModel):
+    title: str
+    groups: list[IngredientGroupCreate] = []
+    instructions: list[InstructionCreate] = []
+
+
+def _insert_recipe_contents(
+    conn,
+    recipe_id: int,
+    groups: list[IngredientGroupCreate],
+    instructions: list[InstructionCreate],
+) -> None:
+    for sort_g, group in enumerate(groups):
+        cur = conn.execute(
+            "INSERT INTO recipe_ingredient_groups (recipe_id, description, sort_order) VALUES (?, ?, ?) RETURNING id",
+            (recipe_id, group.description, sort_g),
+        )
+        group_id = cur.fetchone()["id"]
+        for sort_i, ing in enumerate(group.ingredients):
+            conn.execute(
+                "INSERT INTO recipe_ingredients (group_id, name, amount, unit, sort_order) VALUES (?, ?, ?, ?, ?)",
+                (group_id, ing.name, ing.amount, ing.unit, sort_i),
+            )
+    for sort_s, step in enumerate(instructions):
+        conn.execute(
+            "INSERT INTO recipe_instructions (recipe_id, text, sort_order) VALUES (?, ?, ?)",
+            (recipe_id, step.text, sort_s),
+        )
+
+
+def _get_recipe_detail(conn, recipe_id: int) -> dict:
+    recipe = conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+    if not recipe:
+        raise HTTPException(status_code=404, detail="recipe not found")
+    groups = conn.execute(
+        "SELECT * FROM recipe_ingredient_groups WHERE recipe_id = ? ORDER BY sort_order",
+        (recipe_id,),
+    ).fetchall()
+    instructions = conn.execute(
+        "SELECT * FROM recipe_instructions WHERE recipe_id = ? ORDER BY sort_order",
+        (recipe_id,),
+    ).fetchall()
+    result = dict(recipe)
+    result["groups"] = []
+    for g in groups:
+        group_dict = dict(g)
+        ings = conn.execute(
+            "SELECT * FROM recipe_ingredients WHERE group_id = ? ORDER BY sort_order",
+            (g["id"],),
+        ).fetchall()
+        group_dict["ingredients"] = rows_as_dicts(ings)
+        result["groups"].append(group_dict)
+    result["instructions"] = rows_as_dicts(instructions)
+    return result
+
+
+@app.get("/api/recipes")
+async def get_recipes():
+    with db_connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM recipes ORDER BY title COLLATE NOCASE"
+        ).fetchall()
+    return rows_as_dicts(rows)
+
+
+@app.post("/api/recipes", status_code=201)
+async def create_recipe(body: RecipeCreate):
+    with db_connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO recipes (title) VALUES (?) RETURNING *",
+            (body.title,),
+        )
+        recipe = dict(cur.fetchone())
+        _insert_recipe_contents(conn, recipe["id"], body.groups, body.instructions)
+    return recipe
+
+
+@app.get("/api/recipes/{recipe_id}")
+async def get_recipe(recipe_id: int):
+    with db_connect() as conn:
+        return _get_recipe_detail(conn, recipe_id)
+
+
+@app.put("/api/recipes/{recipe_id}")
+async def update_recipe(recipe_id: int, body: RecipeCreate):
+    with db_connect() as conn:
+        row = conn.execute(
+            "SELECT id FROM recipes WHERE id = ?", (recipe_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="recipe not found")
+        conn.execute(
+            "UPDATE recipes SET title = ? WHERE id = ?", (body.title, recipe_id)
+        )
+        conn.execute(
+            "DELETE FROM recipe_ingredient_groups WHERE recipe_id = ?", (recipe_id,)
+        )
+        conn.execute(
+            "DELETE FROM recipe_instructions WHERE recipe_id = ?", (recipe_id,)
+        )
+        _insert_recipe_contents(conn, recipe_id, body.groups, body.instructions)
+        return _get_recipe_detail(conn, recipe_id)
+
+
+@app.delete("/api/recipes/{recipe_id}", status_code=204)
+async def delete_recipe(recipe_id: int):
+    with db_connect() as conn:
+        conn.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
