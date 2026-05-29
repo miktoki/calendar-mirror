@@ -58,6 +58,7 @@ fi
 mkdir -p "${DEST}/scripts"
 cp "${REPO_ROOT}/scripts/fetch_google_api_key.py" "${DEST}/scripts/"
 cp "${REPO_ROOT}/scripts/setup-surface.sh"        "${DEST}/scripts/"
+cp "${REPO_ROOT}/scripts/surface-wifi-monitor.sh" "${DEST}/scripts/"
 
 # ── Caddy config ─────────────────────────────────────────────────────────────
 # echo "→ Copying Caddyfile..."
@@ -67,6 +68,7 @@ cp "${REPO_ROOT}/Caddyfile" "${DEST}/Caddyfile"
 # echo "→ Copying systemd units..."
 mkdir -p "${DEST}/scripts/systemd"
 cp "${REPO_ROOT}/scripts/systemd/"*.service "${DEST}/scripts/systemd/"
+cp "${REPO_ROOT}/scripts/systemd/"*.timer "${DEST}/scripts/systemd/"
 
 # echo ""
 # echo "✔ Done. Deploy to the Pi with:"

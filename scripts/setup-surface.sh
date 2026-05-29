@@ -3,8 +3,8 @@
 # setup-surface.sh — Configure the deployed Surface instance.
 #
 # Installs required system packages, prepares the backend environment,
-# installs the Caddy config and systemd unit, and fixes frontend read
-# permissions so Caddy can serve the built app from dist/.
+# installs the Caddy config and systemd units, installs WiFi monitoring,
+# and fixes frontend read permissions so Caddy can serve the built app from dist/.
 #
 # Usage:
 #   bash /home/mikaelt/calendar-mirror/dist/scripts/setup-surface.sh
@@ -16,7 +16,7 @@ STATE_DIR="$(dirname "${DIST_DIR}")"
 HOME_DIR="$(dirname "${STATE_DIR}")"
 
 need_apt=0
-for bin in caddy curl sqlite3; do
+for bin in caddy curl sqlite3 iw iwconfig ethtool lsusb; do
 	if ! command -v "$bin" &>/dev/null; then
 		need_apt=1
 		break
@@ -25,7 +25,7 @@ done
 
 if [[ "$need_apt" -eq 1 ]]; then
 	sudo apt-get update -qq
-	sudo apt-get install -y caddy curl acl sqlite3
+	sudo apt-get install -y caddy curl acl sqlite3 iw wireless-tools ethtool usbutils
 fi
 
 export PATH="$HOME/.local/bin:$PATH"
@@ -53,6 +53,18 @@ sudo cp "${tmp_caddy}" /etc/caddy/Caddyfile
 rm -f "${tmp_caddy}"
 sudo systemctl reload caddy || sudo systemctl restart caddy
 
+sudo install -m 0755 "${DIST_DIR}/scripts/surface-wifi-monitor.sh" /usr/local/bin/surface-wifi-monitor
+sudo mkdir -p /var/lib/surface-wifi-monitor
+sudo touch /var/log/surface-wifi-monitor.log
+sudo chmod 0644 /var/log/surface-wifi-monitor.log
+if [[ ! -f /etc/default/surface-wifi-monitor ]]; then
+	sudo tee /etc/default/surface-wifi-monitor >/dev/null <<'EOF'
+# Enable recovery only after the monitor has captured enough evidence.
+RECOVERY=0
+PING_TARGET=1.1.1.1
+EOF
+fi
+
 if id caddy &>/dev/null; then
 	if command -v setfacl &>/dev/null; then
 		sudo setfacl -m u:caddy:--x "${HOME_DIR}" || true
@@ -74,22 +86,24 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "${tmpdir}"' EXIT
 svc_user="$(id -un)"
 
-for svc in "${DIST_DIR}/scripts/systemd/"*.service; do
-	svc_name="$(basename "${svc}")"
+for unit in "${DIST_DIR}/scripts/systemd/"*.service "${DIST_DIR}/scripts/systemd/"*.timer; do
+	[[ -e "${unit}" ]] || continue
+	unit_name="$(basename "${unit}")"
 	sed \
 		-e "s|/home/mikaelt/calendar-mirror/dist|${DIST_DIR}|g" \
 		-e "s|^User=.*$|User=${svc_user}|" \
 		-e "s|^ExecStart=uv |ExecStart=${UV_BIN} |" \
-		"${svc}" > "${tmpdir}/${svc_name}"
+		"${unit}" > "${tmpdir}/${unit_name}"
 done
 
 sudo mkdir -p "${STATE_DIR}"
 sudo chmod 0755 "${STATE_DIR}"
 sudo chown "${svc_user}:${svc_user}" "${STATE_DIR}"
 
-sudo cp "${tmpdir}/"*.service /etc/systemd/system/
+sudo cp "${tmpdir}/"* /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable surface-calendar-backend.service
+sudo systemctl enable --now surface-wifi-monitor.timer
 sudo systemctl restart surface-calendar-backend.service
 
 echo "Setup complete."

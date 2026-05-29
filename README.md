@@ -184,11 +184,12 @@ bash scripts/sync-2-surface.sh --no-build --deploy-dir ./.deploy/surface
 
 On the target machine, `scripts/setup-surface.sh`:
 
-1. Installs system packages (Caddy, curl)
+1. Installs system packages (Caddy, curl, SQLite, WiFi diagnostic tools)
 2. Installs `uv` if missing
 3. Creates/updates the backend virtual environment (`uv sync`)
 4. Installs the Caddyfile and reloads Caddy
-5. Installs and enables the systemd service (`surface-calendar-backend.service`)
+5. Installs and enables the systemd services/timers
+6. Installs `surface-wifi-monitor`, which logs WiFi failures every 5 minutes
 
 The script is safe to rerun. After it finishes, the app should be reachable at:
 
@@ -208,6 +209,80 @@ Then restart the backend:
 
 ```bash
 sudo systemctl restart surface-calendar-backend
+```
+
+### Surface WiFi diagnostics
+
+The setup script installs a logging-only WiFi monitor on the Surface box:
+
+- systemd timer: `surface-wifi-monitor.timer`
+- script: `/usr/local/bin/surface-wifi-monitor`
+- log file: `/var/log/surface-wifi-monitor.log`
+- config: `/etc/default/surface-wifi-monitor`
+
+It runs every 5 minutes. On failure it records interface state, routes, NetworkManager state, `mwifiex` module parameters, recent NetworkManager logs, recent kernel WiFi messages, default-gateway ping, and an external ping bound to the WiFi interface. Recovery is off by default so the first few failures preserve evidence. To capture a manual snapshot while the device is broken:
+
+If the active interface name starts with `wlx`, the machine is probably using a USB WiFi adapter rather than the internal Surface Marvell adapter. In that case `mwifiex` options can be installed correctly while `/sys/module/mwifiex` is absent; the monitor will still log the active USB device and driver details.
+
+```bash
+sudo /usr/local/bin/surface-wifi-monitor --snapshot
+```
+
+Useful log commands on the Surface:
+
+```bash
+sudo tail -n 200 /var/log/surface-wifi-monitor.log
+sudo journalctl -u surface-wifi-monitor.service -n 100 --no-pager
+sudo systemctl status surface-wifi-monitor.timer
+```
+
+After the monitor has captured at least one failed state, optional recovery can be enabled with:
+
+```bash
+sudo sed -i 's/^RECOVERY=.*/RECOVERY=1/' /etc/default/surface-wifi-monitor
+sudo systemctl restart surface-wifi-monitor.timer
+```
+
+#### One-liner checks for already-applied WiFi fixes
+
+Run these on the Surface box to see exactly what is already in place:
+
+```bash
+# WiFi interface and driver
+iface=$(iw dev | awk '$1=="Interface"{print $2; exit}'); echo "iface=${iface:-none}"; [[ -n "$iface" ]] && ethtool -i "$iface" 2>/dev/null | sed -n '1,4p'
+
+# Active interface sysfs driver path and USB identity, useful when the interface starts with wlx
+iface=$(iw dev | awk '$1=="Interface"{print $2; exit}'); [[ -n "$iface" ]] && { readlink -f "/sys/class/net/$iface/device/driver"; udevadm info -q property -p "/sys/class/net/$iface" | grep -E '^(ID_VENDOR_ID|ID_MODEL_ID|ID_VENDOR=|ID_MODEL=|ID_USB_DRIVER=)'; lsusb; }
+
+# NetworkManager WiFi powersave and MAC randomization config
+sudo sh -c 'grep -RHE "wifi\.powersave|wifi\.scan-rand-mac-address|wifi\.cloned-mac-address" /etc/NetworkManager/conf.d /usr/lib/NetworkManager/conf.d 2>/dev/null || true'
+
+# Stored NetworkManager WiFi powersave value for the active connection; 0 means the connection inherits global defaults
+nmcli -g GENERAL.CONNECTION device show "$(iw dev | awk '$1=="Interface"{print $2; exit}')" | xargs -r -I{} nmcli -f 802-11-wireless.powersave,802-11-wireless.cloned-mac-address connection show "{}"
+
+# mwifiex deep sleep module option file
+sudo sh -c 'grep -RHE "^options[[:space:]]+mwifiex([[:space:]].*)?disable_auto_ds=1" /etc/modprobe.d /usr/lib/modprobe.d 2>/dev/null || true'
+
+# Live mwifiex deep sleep value; Y or 1 means disable_auto_ds is active
+cat /sys/module/mwifiex/parameters/disable_auto_ds 2>/dev/null || echo "mwifiex not loaded or parameter missing"
+
+# Invalid/ineffective mwifiex_pcie module options
+sudo sh -c 'grep -RHE "^options[[:space:]]+mwifiex_pcie" /etc/modprobe.d /usr/lib/modprobe.d 2>/dev/null || true'
+
+# System sleep targets masked
+systemctl is-enabled sleep.target suspend.target hibernate.target hybrid-sleep.target
+
+# X11 blanking state for the current graphical session
+DISPLAY=${DISPLAY:-:0} xset q | sed -n '/Screen Saver:/,/DPMS/p'
+
+# XFCE autostart entry for xset blanking/DPMS disable
+grep -RHE "xset s off|xset -dpms|xset s noblank" ~/.config/autostart /etc/xdg/autostart 2>/dev/null || true
+
+# Old cron watchdogs
+sudo sh -c '(crontab -l 2>/dev/null; find /etc/cron* -type f -maxdepth 2 -print -exec grep -H "wifi-watchdog\|surface-wifi-monitor" {} \; 2>/dev/null) || true'
+
+# New monitor installed and scheduled
+systemctl is-enabled surface-wifi-monitor.timer; systemctl status surface-wifi-monitor.timer --no-pager
 ```
 
 ---

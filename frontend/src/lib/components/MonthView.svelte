@@ -12,7 +12,7 @@
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
 	import { onMount, onDestroy } from 'svelte';
-	import { createPullToRefresh } from '$lib/calendarInteractions';
+	import { createHorizontalSwipe, createPullToRefresh } from '$lib/calendarInteractions';
 
 	export let events: CalendarEvent[];
 	export let anchor: Date;
@@ -33,6 +33,10 @@
 	let cellHeight = 80;
 	let ro: ResizeObserver;
 	const pullToRefresh = createPullToRefresh(() => refresh?.() ?? Promise.resolve());
+	const swipe = createHorizontalSwipe(
+		() => (anchor = addMonths(anchor, -1)),
+		() => (anchor = addMonths(anchor, 1)),
+	);
 
 	// Max chips that visually fit in a cell (no overflow line reserved yet;
 	// per-cell logic in template reserves 1 slot for "+N more" when needed).
@@ -92,9 +96,18 @@
 
 <div
 	class="month-view"
-	on:touchstart={(event) => pullToRefresh.onTouchStart(event, 0)}
-	on:touchmove={(event) => pullToRefresh.onTouchMove(event, 0)}
-	on:touchend={pullToRefresh.onTouchEnd}
+	on:touchstart={(event) => {
+		pullToRefresh.onTouchStart(event, 0);
+		swipe.onTouchStart(event);
+	}}
+	on:touchmove={(event) => {
+		pullToRefresh.onTouchMove(event, 0);
+		swipe.onTouchMove(event);
+	}}
+	on:touchend={() => {
+		pullToRefresh.onTouchEnd();
+		swipe.onTouchEnd();
+	}}
 >
 	<header class="month-header">
 		<div class="header-left">

@@ -1,0 +1,9 @@
+[Unit]
+Description=Surface WiFi connectivity monitor
+After=NetworkManager.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/default/surface-wifi-monitor
+ExecStart=/usr/local/bin/surface-wifi-monitor

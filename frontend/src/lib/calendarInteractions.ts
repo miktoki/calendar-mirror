@@ -1,4 +1,6 @@
 const PULL_REFRESH_THRESHOLD_PX = 140;
+const HORIZONTAL_SWIPE_THRESHOLD_PX = 72; // Minimum horizontal movement in pixels to trigger a swipe, ignoring small accidental movements.
+const HORIZONTAL_SWIPE_DOMINANCE_RATIO = 2.0; // Horizontal movement must be at least this times greater than vertical movement to count as a horizontal swipe.
 
 export function isEditableTarget(target: EventTarget | null): boolean {
 	return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, button, a, [contenteditable="true"]'));
@@ -69,6 +71,48 @@ export function createPullToRefresh(onRefresh?: () => Promise<void>) {
 			startY = null;
 			armed = false;
 		}
+	}
+
+	return {
+		onTouchStart,
+		onTouchMove,
+		onTouchEnd,
+	};
+}
+
+/** Trigger previous/next navigation on deliberate horizontal swipe gestures. */
+export function createHorizontalSwipe(onPrev?: () => void, onNext?: () => void) {
+	let startX: number | null = null;
+	let startY: number | null = null;
+	let fired = false;
+
+	function onTouchStart(event: TouchEvent) {
+		if ((!onPrev && !onNext) || isEditableTarget(event.target)) return;
+		startX = event.touches[0]?.clientX ?? null;
+		startY = event.touches[0]?.clientY ?? null;
+		fired = false;
+	}
+
+	function onTouchMove(event: TouchEvent) {
+		if (startX === null || startY === null || fired) return;
+		const currentX = event.touches[0]?.clientX ?? startX;
+		const currentY = event.touches[0]?.clientY ?? startY;
+		const deltaX = currentX - startX;
+		const deltaY = currentY - startY;
+		if (Math.abs(deltaX) < HORIZONTAL_SWIPE_THRESHOLD_PX) return;
+		if (Math.abs(deltaX) <= Math.abs(deltaY) * HORIZONTAL_SWIPE_DOMINANCE_RATIO) return;
+		fired = true;
+		if (deltaX > 0) {
+			onPrev?.();
+			return;
+		}
+		onNext?.();
+	}
+
+	function onTouchEnd() {
+		startX = null;
+		startY = null;
+		fired = false;
 	}
 
 	return {

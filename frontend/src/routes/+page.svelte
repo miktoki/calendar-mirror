@@ -15,6 +15,8 @@
 	const RANGE_COOLDOWN_MS = 30 * 1000; // 30 sec
 	const WEATHER_STALE_MS = 60 * 60 * 1000; // 1 hour
 	const ANCHOR_KEY = 'rpi-calendar-anchor';
+	const ANCHOR_VISITED_AT_KEY = 'rpi-calendar-anchor-visited-at';
+	const ANCHOR_RESUME_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 	let events: CalendarEvent[] = [];
 	let calendars: CalendarMeta[] = [];
@@ -37,11 +39,13 @@
 	function saveAnchor(d: Date) {
 		if (!mounted) return;
 		localStorage.setItem(ANCHOR_KEY, d.toISOString());
+		localStorage.setItem(ANCHOR_VISITED_AT_KEY, String(Date.now()));
 	}
-	/** Load the anchor date from localStorage or fallback to the current date. */
+	/** Load the saved anchor only if the page was last visited within the resume window. */
 	function loadAnchor(): Date {
 		const stored = localStorage.getItem(ANCHOR_KEY);
-		if (stored) {
+		const visitedAt = Number(localStorage.getItem(ANCHOR_VISITED_AT_KEY) ?? '0');
+		if (stored && Date.now() - visitedAt <= ANCHOR_RESUME_WINDOW_MS) {
 			const d = new Date(stored);
 			if (!isNaN(d.getTime())) return d;
 		}

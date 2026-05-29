@@ -11,7 +11,6 @@
 		{ value: 0.25, label: '¼×' },
 		{ value: 0.5, label: '½×' },
 		{ value: 1, label: '1×' },
-		{ value: 1.5, label: '1½×' },
 		{ value: 2, label: '2×' },
 		{ value: 4, label: '4×' },
 	];
@@ -187,7 +186,7 @@
 		if (!amount) return '';
 		const v = amount * s;
 		const FRACS: [number, string][] = [
-			[1 / 4, '¼'], [1 / 3, '⅓'], [1 / 2, '½'], [2 / 3, '⅔'], [3 / 4, '¾'],
+			[1 / 4, '0.25'], [1 / 3, '0.33'], [1 / 2, '0.5'], [2 / 3, '0.67'], [3 / 4, '0.75'],
 		];
 		const whole = Math.floor(v);
 		const frac = v - whole;
@@ -202,7 +201,12 @@
 
 	$: hasScalableIngredients = selectedRecipe?.groups.some((g) => g.ingredients.some((i) => i.amount > 0)) ?? false;
 	$: multipleGroups = draftGroups.length > 1;
-	$: hasChanges = creating || JSON.stringify(buildPayload()) !== savedPayload;
+	// Pass draft vars as arguments so Svelte's static dep-tracker sees them and re-runs
+	// hasChanges whenever the user edits a field (buildPayload() alone is opaque to it).
+	function computeHasChanges(_title: string, _groups: DraftGroup[], _steps: string[]): boolean {
+		return creating || JSON.stringify(buildPayload()) !== savedPayload;
+	}
+	$: hasChanges = computeHasChanges(draftTitle, draftGroups, draftSteps);
 </script>
 
 <div class="recipes-view">
@@ -588,6 +592,8 @@
 		font-size: 0.85rem;
 		padding: 0.2rem 0.4rem;
 		width: auto;
+		appearance: none;
+		background-image: none;
 	}
 
 	.detail-section {

@@ -13,7 +13,7 @@
 	import EventPopup from './EventPopup.svelte';
 	import AllDayEventChip from './AllDayEventChip.svelte';
 	import TimedEventChip from './TimedEventChip.svelte';
-	import { createPullToRefresh, defaultHourScrollTop, isEditableTarget, scrollHoursBy } from '$lib/calendarInteractions';
+	import { createHorizontalSwipe, createPullToRefresh, defaultHourScrollTop, isEditableTarget, scrollHoursBy } from '$lib/calendarInteractions';
 	import { onMount } from 'svelte';
 
 	export let events: CalendarEvent[];
@@ -117,6 +117,10 @@
 
 	$: isToday = day.toDateString() === today.toDateString();
 	const pullToRefresh = createPullToRefresh(() => refresh?.() ?? Promise.resolve());
+	const swipe = createHorizontalSwipe(
+		() => (anchor = addDays(anchor, -1)),
+		() => (anchor = addDays(anchor, 1)),
+	);
 
 	onMount(() => {
 		if (scrollArea) {
@@ -211,9 +215,18 @@
 	<div
 		class="scroll-area"
 		bind:this={scrollArea}
-		on:touchstart={(event) => pullToRefresh.onTouchStart(event, scrollArea?.scrollTop ?? 0)}
-		on:touchmove={(event) => pullToRefresh.onTouchMove(event, scrollArea?.scrollTop ?? 0)}
-		on:touchend={pullToRefresh.onTouchEnd}
+		on:touchstart={(event) => {
+			pullToRefresh.onTouchStart(event, scrollArea?.scrollTop ?? 0);
+			swipe.onTouchStart(event);
+		}}
+		on:touchmove={(event) => {
+			pullToRefresh.onTouchMove(event, scrollArea?.scrollTop ?? 0);
+			swipe.onTouchMove(event);
+		}}
+		on:touchend={() => {
+			pullToRefresh.onTouchEnd();
+			swipe.onTouchEnd();
+		}}
 	>
 		<div class="time-grid" style="height: {(END_HOUR - START_HOUR + 1) * HOUR_HEIGHT}px">
 			{#each hours as h}
