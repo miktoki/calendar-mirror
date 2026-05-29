@@ -17,6 +17,7 @@
 	type="button"
 	class="chip"
 	class:compact={density === 'week'}
+	data-swipe-navigation-target="true"
 	style="background: {color.bg}; color: {color.fg};"
 	on:click|stopPropagation={open}
 >
@@ -45,10 +46,13 @@
 	.chip.compact {
 		display: block;
 		width: 100%;
+		flex: 0 1 auto;
+		align-self: flex-start;
+		height: auto;
 		border-left: 2px solid rgba(0, 0, 0, 0.15);
 		border-radius: 0.2rem;
-		padding: 0.02rem 0.3rem;
-		font-size: 0.68rem;
-		line-height: 1.4;
+		padding: 0.04rem 0.34rem;
+		font-size: 0.7rem;
+		line-height: 1.25;
 	}
 </style>

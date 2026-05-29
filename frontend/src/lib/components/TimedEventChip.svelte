@@ -81,6 +81,7 @@
 	class:narrow
 	class:week={density === 'week'}
 	class:inline-title={inlineTitle}
+	data-swipe-navigation-target="true"
 	bind:this={buttonEl}
 	style={styleAttr}
 	on:click|stopPropagation={open}

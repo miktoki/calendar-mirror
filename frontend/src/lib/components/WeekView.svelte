@@ -1,10 +1,9 @@
 <script lang="ts">
 	import type { CalendarEvent, CalendarMeta, WeatherRecord, TimeSeries } from '$lib/api';
-	import { eventColor } from '$lib/api';
 	import type { TimedSegment, TimedEventChipContent } from '$lib/dateUtils';
 	import {
 		isAllDay, formatTime, isSameDay,
-		eventsOnDay, startOfWeek, addDays, formatDate, formatMonthYear, localDateStr,
+		eventsOnDay, startOfWeek, addDays, formatMonthYear, localDateStr,
 		isoWeekNumber, timedSegmentsForDay, layoutOverlappingSegments, timedEventChipContent, plainTextFromHtml,
 
         time24h
@@ -218,7 +217,8 @@
 	<div class="grid-wrapper">
 		<div class="time-col-header"></div>
 		{#each daysWithWeather as { day, series }}
-			<div
+			<button
+				type="button"
 				class="day-col-header"
 				class:today={isSameDay(day, today)}
 				on:click={() => { anchor = day; currentView.set('day'); }}
@@ -228,15 +228,14 @@
 					<span class="dom" class:today={isSameDay(day, today)}>{day.getDate()}</span>
 				</div>
 				<WeatherWidget {series} hour={12} mode="day" />
-			</div>
+			</button>
 		{/each}
 
 		<div class="allday-gutter"></div>
 		{#each daysData as { allDayEvs, fullDaySegs }}
 			<div class="allday-cell">
 				{#each allDayEvs as ev}
-					{@const c = eventColor(ev)}
-					<span class="chip" style="background: {c.bg}; color: {c.fg};" on:click|stopPropagation={() => (popupEvent = ev)}>{ev.summary}</span>
+					<AllDayEventChip event={ev} density="week" onOpen={(e) => (popupEvent = e)} />
 				{/each}
 				{#each fullDaySegs as seg}
 					<AllDayEventChip event={seg.ev} density="week" onOpen={(e) => (popupEvent = e)} />
@@ -246,6 +245,7 @@
 
 		<div
 			class="scroll-row"
+			role="presentation"
 			bind:this={scrollRow}
 			on:touchstart={(event) => {
 				pullToRefresh.onTouchStart(event, scrollRow?.scrollTop ?? 0);
@@ -387,7 +387,7 @@
 		flex: 1;
 		overflow: hidden;
 		display: grid;
-		grid-template-columns: 3rem repeat(7, 1fr);
+		grid-template-columns: 3rem repeat(7, minmax(0, 1fr));
 		grid-template-rows: auto auto 1fr;
 	}
 
@@ -400,11 +400,17 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		min-width: 0;
 		padding: 0.2rem 0;
 		border-bottom: 1px solid var(--pico-muted-border-color);
 		font-size: 0.75rem;
 		cursor: pointer;
 		user-select: none;
+		gap: 0.1rem;
+		width: 100%;
+		border: 0;
+		background: transparent;
+		text-align: center;
 		gap: 0.1rem;
 	}
 
@@ -448,29 +454,21 @@
 
 	.allday-cell {
 		min-height: 1.6rem;
+		min-width: 0;
 		padding: 0.1rem 0.2rem;
 		border-bottom: 1px solid var(--pico-muted-border-color);
 		display: flex;
+		align-items: flex-start;
+		align-content: flex-start;
 		flex-wrap: wrap;
-		gap: 0.15rem;
-	}
-
-	.chip {
-		background-image: none;
-		border-radius: 0.25rem;
-		padding: 0.12rem 0.4rem;
-		font-size: 0.7rem;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		max-width: 100%;
-		cursor: pointer;
+		column-gap: 0.15rem;
+		row-gap: 1px;
 	}
 
 	.scroll-row {
 		grid-column: 1 / -1;
 		display: grid;
-		grid-template-columns: 3rem repeat(7, 1fr);
+		grid-template-columns: 3rem repeat(7, minmax(0, 1fr));
 		overflow-y: auto;
 	}
 
@@ -490,6 +488,7 @@
 
 	.day-col {
 		position: relative;
+		min-width: 0;
 		border-right: 1px solid var(--pico-muted-border-color);
 	}
 

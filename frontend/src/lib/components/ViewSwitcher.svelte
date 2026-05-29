@@ -2,13 +2,31 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { currentView, type View } from '$lib/stores';
 
-	const views: { id: View; label: string; icon: string }[] = [
-		{ id: 'day',     label: 'Day',     icon: '▦' },
-		{ id: 'week',    label: 'Week',    icon: '▦▦' },
-		{ id: 'month',   label: 'Month',   icon: '▦▦▦' },
-		{ id: 'weather', label: 'Weather', icon: '☁' },
-		{ id: 'todo',    label: 'Todo',    icon: '✓' },
-	{ id: 'recipes', label: 'Recipes', icon: '🍴' },
+	type SwitcherIcon =
+		| { kind: 'text'; value: string }
+		| { kind: 'mask'; src: string };
+
+	const views: { id: View; label: string; icon: SwitcherIcon }[] = [
+		{ id: 'day', label: 'Day', icon: { kind: 'text', value: '▦' } },
+		{ id: 'week', label: 'Week', icon: { kind: 'text', value: '▦▦' } },
+		{ id: 'month', label: 'Month', icon: { kind: 'text', value: '▦▦▦' } },
+		{
+			id: 'weather',
+			label: 'Weather',
+			icon: {
+				kind: 'mask',
+				src: '/icons/view-switcher-weather.svg'
+			}
+		},
+		{ id: 'todo', label: 'Todo', icon: { kind: 'text', value: '✓' } },
+		{
+			id: 'recipes',
+			label: 'Recipes',
+			icon: {
+				kind: 'mask',
+				src: '/icons/view-switcher-recipes.svg'
+			}
+		}
 	];
 
 	let open = false;
@@ -88,7 +106,13 @@
 					on:click={() => select(v.id)}
 					aria-label={v.label}
 				>
-					<span class="icon">{v.icon}</span>
+					<span class="icon" aria-hidden="true">
+						{#if v.icon.kind === 'mask'}
+							<span class="icon-mask" style={`--icon-url: url('${v.icon.src}')`}></span>
+						{:else}
+							{v.icon.value}
+						{/if}
+					</span>
 					<span class="label">{v.label}</span>
 				</button>
 			{/each}
@@ -154,6 +178,26 @@
 	}
 
 	.icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.15rem;
+		height: 1.15rem;
 		font-size: 1rem;
+	}
+
+	.icon-mask {
+		display: block;
+		width: 100%;
+		height: 100%;
+		background: currentColor;
+		mask-image: var(--icon-url);
+		mask-position: center;
+		mask-repeat: no-repeat;
+		mask-size: contain;
+		-webkit-mask-image: var(--icon-url);
+		-webkit-mask-position: center;
+		-webkit-mask-repeat: no-repeat;
+		-webkit-mask-size: contain;
 	}
 </style>

@@ -1,9 +1,14 @@
 const PULL_REFRESH_THRESHOLD_PX = 140;
 const HORIZONTAL_SWIPE_THRESHOLD_PX = 72; // Minimum horizontal movement in pixels to trigger a swipe, ignoring small accidental movements.
-const HORIZONTAL_SWIPE_DOMINANCE_RATIO = 2.0; // Horizontal movement must be at least this times greater than vertical movement to count as a horizontal swipe.
+const HORIZONTAL_SWIPE_DOMINANCE_RATIO = 1.5; // Horizontal movement must be at least this times greater than vertical movement to count as a horizontal swipe.
+const SWIPE_NAVIGATION_TARGET_SELECTOR = '[data-swipe-navigation-target="true"]';
 
 export function isEditableTarget(target: EventTarget | null): boolean {
 	return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, button, a, [contenteditable="true"]'));
+}
+
+function isSwipeNavigationTarget(target: EventTarget | null): boolean {
+	return target instanceof HTMLElement && Boolean(target.closest(SWIPE_NAVIGATION_TARGET_SELECTOR));
 }
 
 export function defaultHourScrollTop(
@@ -87,7 +92,7 @@ export function createHorizontalSwipe(onPrev?: () => void, onNext?: () => void) 
 	let fired = false;
 
 	function onTouchStart(event: TouchEvent) {
-		if ((!onPrev && !onNext) || isEditableTarget(event.target)) return;
+		if ((!onPrev && !onNext) || (isEditableTarget(event.target) && !isSwipeNavigationTarget(event.target))) return;
 		startX = event.touches[0]?.clientX ?? null;
 		startY = event.touches[0]?.clientY ?? null;
 		fired = false;

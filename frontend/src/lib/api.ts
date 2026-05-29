@@ -47,7 +47,7 @@ export function eventColor(ev: CalendarEvent): { bg: string; fg: string } {
 		case 'jo': return { bg: '#800000', fg: '#ffffff' }; // maroon
 		case 'mi': return { bg: '#808000', fg: '#ffffff' }; // olive
 		case 'mh': return { bg: '#000080', fg: '#ffffff' }; // navy
-		case 'ts': return { bg: '#002424', fg: '#ffffff' }; // near black
+		case 'ts': return { bg: '#000000', fg: '#ffffff' }; // black
 		case 'th': return { bg: '#a85400', fg: '#ffffff' }; // dark orange
 		default: break;
 	}

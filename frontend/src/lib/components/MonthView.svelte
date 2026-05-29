@@ -96,6 +96,7 @@
 
 <div
 	class="month-view"
+	role="presentation"
 	on:touchstart={(event) => {
 		pullToRefresh.onTouchStart(event, 0);
 		swipe.onTouchStart(event);
@@ -148,7 +149,8 @@
 				{@const dayEvents = eventsOnDay(events, day)}
 				{@const visible = dayEvents.length > maxVisible ? dayEvents.slice(0, maxVisible - 1) : dayEvents}
 				{@const overflow = dayEvents.length - visible.length}
-				<div
+				<button
+					type="button"
 					class="cal-cell"
 					class:first-weekday={colIdx === 0}
 					class:other-month={day.getMonth() !== currentMonth}
@@ -171,7 +173,7 @@
 							<div class="overflow">+{overflow} more</div>
 						{/if}
 					</div>
-				</div>
+				</button>
 			{/each}
 		{/each}
 	</div>
@@ -304,10 +306,17 @@
 		border-right: 1px solid var(--pico-muted-border-color);
 		border-bottom: 1px solid var(--pico-muted-border-color);
 		padding: 0.2rem 0.3rem;
+		width: 100%;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 		gap: 0.15rem;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		text-align: left;
+		border-top: 0;
+		border-left: 0;
 		cursor: pointer;
 		user-select: none;
 	}
