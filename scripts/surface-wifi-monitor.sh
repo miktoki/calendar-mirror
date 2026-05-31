@@ -77,12 +77,25 @@ recover() {
 		return
 	fi
 	log "recovery reloading mwifiex modules"
+	systemctl stop NetworkManager || true
+	if [[ -n "${iface}" ]]; then
+		ip link set "${iface}" down 2>/dev/null || true
+	fi
+	modprobe -r mwifiex_usb 2>/dev/null || true
 	modprobe -r mwifiex_pcie 2>/dev/null || true
 	modprobe -r mwifiex_sdio 2>/dev/null || true
 	modprobe -r mwifiex 2>/dev/null || true
 	modprobe mwifiex || true
+	modprobe mwifiex_usb || true
 	modprobe mwifiex_pcie || true
-	systemctl restart NetworkManager || true
+	systemctl start NetworkManager || true
+	sleep 20
+	iface="$(wifi_iface || true)"
+	if [[ -n "${iface}" ]] && ping -c 2 -W 5 -I "${iface}" "${PING_TARGET}" >/dev/null 2>&1; then
+		log "recovery succeeded after mwifiex reload iface=${iface}"
+		return
+	fi
+	log "recovery failed after mwifiex reload iface=${iface:-unknown}"
 }
 
 main() {

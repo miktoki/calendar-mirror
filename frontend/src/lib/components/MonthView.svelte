@@ -3,12 +3,14 @@
 	import { eventColor } from '$lib/api';
 	import {
 		eventsOnDay, startOfMonth, startOfWeek, addDays, addMonths,
-		isSameDay, formatMonthYear, isAllDay,
+		isSameDay, formatMonthYear,
 		isoWeekNumber, localDateStr,
 
         time24h
 
 	} from '$lib/dateUtils';
+	import DayPreviewPopup from './DayPreviewPopup.svelte';
+	import EventPopup from './EventPopup.svelte';
 	import WeatherWidget from './WeatherWidget.svelte';
 	import { currentView } from '$lib/stores';
 	import { onMount, onDestroy } from 'svelte';
@@ -22,30 +24,41 @@
 
 	const today = new Date();
 	const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-	const CELL_HEADER_PX = 20;
-	const CHIP_PX = 11;
-	const SHOW_WEEK_TOUCH_DEBUG = true;
+	const SHOW_WEEK_TOUCH_DEBUG = false;
 	const WEEK_TOUCH_TARGET_WIDTH_REM = 4;
-	const WEEK_NUMBER_GUTTER_REM = 1.6;
+	const WEEK_NUMBER_GUTTER_REM = 1.8;
 	const FIRST_WEEKDAY_CONTENT_INSET_REM = WEEK_TOUCH_TARGET_WIDTH_REM - WEEK_NUMBER_GUTTER_REM;
+	const MONTH_CELL_NON_EVENT_PX = 47;
+	const MONTH_EVENT_ROW_PX = 22;
+	const MONTH_OVERFLOW_ROW_PX = 23;
+	const MONTH_EVENT_ROW_GAP_PX = 3;
 
 	let gridEl: HTMLElement;
 	let cellHeight = 80;
 	let ro: ResizeObserver;
+	let previewDay: Date | null = null;
+	let previewEvents: CalendarEvent[] = [];
+	let previewAnchorRect: DOMRect | null = null;
+	let popupEvent: CalendarEvent | null = null;
 	const pullToRefresh = createPullToRefresh(() => refresh?.() ?? Promise.resolve());
 	const swipe = createHorizontalSwipe(
-		() => (anchor = addMonths(anchor, -1)),
-		() => (anchor = addMonths(anchor, 1)),
+		() => goToMonth(-1),
+		() => goToMonth(1),
 	);
 
-	// Max chips that visually fit in a cell (no overflow line reserved yet;
-	// per-cell logic in template reserves 1 slot for "+N more" when needed).
-	$: maxVisible = Math.max(1, Math.floor((cellHeight - CELL_HEADER_PX) / CHIP_PX));
+	// Reserve vertical room for the overflow row itself so "+N more" stays visible.
+	$: eventListBudgetPx = Math.max(0, cellHeight - MONTH_CELL_NON_EVENT_PX);
+	$: overflowRowsVisible = 1 + Math.floor(
+		Math.max(0, eventListBudgetPx + MONTH_EVENT_ROW_GAP_PX - MONTH_OVERFLOW_ROW_PX) /
+		(MONTH_EVENT_ROW_PX + MONTH_EVENT_ROW_GAP_PX)
+	);
+	$: maxVisible = Math.max(1, Math.min(5, overflowRowsVisible));
 
 	onMount(() => {
 		ro = new ResizeObserver((entries) => {
-			const h = entries[0]?.contentRect.height;
-			if (h) cellHeight = h / 6;
+			const rect = entries[0]?.contentRect;
+			if (!rect) return;
+			cellHeight = rect.height / 6;
 		});
 		ro.observe(gridEl);
 	});
@@ -61,6 +74,10 @@
 
 	$: timeseries = weather?.forecast?.properties?.timeseries ?? [];
 
+	/**
+	 * Groups the weather forecast timeseries by visible calendar day so each
+	 * month cell can render its own noon-weather summary without extra lookups.
+	 */
 	function buildCells(cells: Date[], timeseries: TimeSeries[]): { day: Date; series: TimeSeries[] }[] {
 		return cells.map((day) => {
 			const key = localDateStr(day);
@@ -69,9 +86,60 @@
 	}
 
 	$: cellsWithWeather = buildCells(cells, timeseries);
+	$: {
+		const activePreviewDay = previewDay;
+		if (activePreviewDay && !cells.some((cell) => isSameDay(cell, activePreviewDay))) {
+			closeDayPreview();
+		}
+	}
+
+	function closeDayPreview() {
+		previewDay = null;
+		previewEvents = [];
+		previewAnchorRect = null;
+	}
+
+	function goToMonth(offset: number) {
+		closeDayPreview();
+		anchor = addMonths(anchor, offset);
+	}
+
+	function goToDay(day: Date) {
+		closeDayPreview();
+		anchor = day;
+		currentView.set('day');
+	}
+
+	function onDayCellKeydown(event: KeyboardEvent, day: Date) {
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		event.preventDefault();
+		goToDay(day);
+	}
+
+	/**
+	 * Anchors the overflow preview to the clicked "+N more" control so the user
+	 * keeps direct day navigation on the cell while getting a local event preview.
+	 */
+	function openDayPreview(day: Date, dayEvents: CalendarEvent[], event: MouseEvent) {
+		event.stopPropagation();
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
+		if (previewDay && isSameDay(previewDay, day)) {
+			closeDayPreview();
+			return;
+		}
+		previewDay = day;
+		previewEvents = dayEvents;
+		previewAnchorRect = target.getBoundingClientRect();
+	}
+
+	function openEventPopup(event: CustomEvent<{ event: CalendarEvent }>) {
+		closeDayPreview();
+		popupEvent = event.detail.event;
+	}
 
 	function shouldHandleCalendarKeys(event: KeyboardEvent): boolean {
-		if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
+		if (previewDay || popupEvent || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
 		const target = event.target;
 		if (!(target instanceof HTMLElement)) return true;
 		return !target.closest('input, textarea, select, [contenteditable="true"]');
@@ -81,12 +149,12 @@
 		if (!shouldHandleCalendarKeys(event)) return;
 		if (event.key === 'ArrowLeft') {
 			event.preventDefault();
-			anchor = addMonths(anchor, -1);
+			goToMonth(-1);
 			return;
 		}
 		if (event.key === 'ArrowRight') {
 			event.preventDefault();
-			anchor = addMonths(anchor, 1);
+			goToMonth(1);
 			return;
 		}
 	}
@@ -112,7 +180,7 @@
 >
 	<header class="month-header">
 		<div class="header-left">
-			<button class="outline nav-btn" on:click={() => (anchor = addMonths(anchor, -1))}>‹</button>
+			<button class="outline nav-btn" on:click={() => goToMonth(-1)}>‹</button>
 		</div>
 		<h2 class="period">{formatMonthYear(anchor)}</h2>
 		<div class="header-right">
@@ -120,9 +188,9 @@
 				<span class="updated">Updated {time24h(lastFetchedAt)}</span>
 			{/if}
 			{#if !isCurrentMonth}
-				<button class="outline today-btn" on:click={() => (anchor = new Date())}>Today</button>
+				<button class="outline today-btn" on:click={() => { closeDayPreview(); anchor = new Date(); }}>Today</button>
 			{/if}
-			<button class="outline nav-btn" on:click={() => (anchor = addMonths(anchor, 1))}>›</button>
+			<button class="outline nav-btn" on:click={() => goToMonth(1)}>›</button>
 		</div>
 	</header>
 
@@ -139,7 +207,7 @@
 					type="button"
 					class="week-touch-target"
 					class:debug-touch={SHOW_WEEK_TOUCH_DEBUG}
-					on:click={() => { anchor = rowStart; currentView.set('week'); }}
+					on:click={() => { closeDayPreview(); anchor = rowStart; currentView.set('week'); }}
 					aria-label={`Open week ${isoWeekNumber(rowStart)}`}
 				>
 					<span class="week-num-label">{isoWeekNumber(rowStart)}</span>
@@ -149,14 +217,16 @@
 				{@const dayEvents = eventsOnDay(events, day)}
 				{@const visible = dayEvents.length > maxVisible ? dayEvents.slice(0, maxVisible - 1) : dayEvents}
 				{@const overflow = dayEvents.length - visible.length}
-				<button
-					type="button"
+				<div
 					class="cal-cell"
 					class:first-weekday={colIdx === 0}
 					class:other-month={day.getMonth() !== currentMonth}
 					class:today={isSameDay(day, today)}
+					role="button"
+					tabindex="0"
 					style:--first-weekday-content-inset={colIdx === 0 ? `${FIRST_WEEKDAY_CONTENT_INSET_REM}rem` : '0rem'}
-					on:click={() => { anchor = day; currentView.set('day'); }}
+					on:click={() => goToDay(day)}
+					on:keydown={(event) => onDayCellKeydown(event, day)}
 				>
 					<div class="cell-header">
 						<span class="day-num">{day.getDate()}</span>
@@ -170,16 +240,38 @@
 							</div>
 						{/each}
 						{#if overflow > 0}
-							<div class="overflow">+{overflow} more</div>
+							<button
+								type="button"
+								class="overflow"
+								on:click={(event) => openDayPreview(day, dayEvents, event)}
+								aria-label={`Show ${overflow} more events for ${day.toLocaleDateString()}`}
+							>
+								+{overflow} more
+							</button>
 						{/if}
 					</div>
-				</button>
+				</div>
 			{/each}
 		{/each}
 	</div>
 </div>
+
+<DayPreviewPopup
+	day={previewDay}
+	events={previewEvents}
+	anchorRect={previewAnchorRect}
+	on:close={closeDayPreview}
+	on:openDay={() => previewDay && goToDay(previewDay)}
+	on:openEvent={openEventPopup}
+/>
+
+<EventPopup event={popupEvent} on:close={() => (popupEvent = null)} />
 <style>
 	.month-view {
+		--week-column-width: 1.8rem;
+		--weekday-row-height: 1.8rem;
+		--cell-padding-x: 0.4rem;
+		--cell-padding-y: 0.3rem;
 		display: flex;
 		flex-direction: column;
 		height: 100vh;
@@ -234,27 +326,34 @@
 
 	.dow-row {
 		display: grid;
-		grid-template-columns: 1.6rem repeat(7, 1fr);
+		grid-template-columns: var(--week-column-width) repeat(7, minmax(0, 1fr));
+		align-items: stretch;
+		min-height: var(--weekday-row-height);
 		flex-shrink: 0;
 		border-bottom: 1px solid var(--pico-muted-border-color);
 	}
 
 	.wnum-header {
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		border-right: 1px solid var(--pico-muted-border-color);
 	}
 
 	.dow {
-		text-align: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		font-size: 0.75rem;
 		font-weight: 600;
-		padding: 0.2rem 0;
+		padding: 0.35rem 0;
 		color: var(--pico-muted-color);
 	}
 
 	.cal-grid {
 		flex: 1;
 		display: grid;
-		grid-template-columns: 1.6rem repeat(7, 1fr);
+		grid-template-columns: var(--week-column-width) repeat(7, minmax(0, 1fr));
 		grid-template-rows: repeat(6, 1fr);
 		overflow: hidden;
 	}
@@ -282,7 +381,7 @@
 		width: max(100%, 4rem);
 		display: flex;
 		align-items: center;
-		justify-content: flex-start;
+		justify-content: center;
 		cursor: pointer;
 		border-radius: 0.25rem;
 	}
@@ -297,7 +396,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 1.6rem;
+		width: var(--week-column-width);
 		height: 100%;
 		pointer-events: none;
 	}
@@ -305,31 +404,34 @@
 	.cal-cell {
 		border-right: 1px solid var(--pico-muted-border-color);
 		border-bottom: 1px solid var(--pico-muted-border-color);
-		padding: 0.2rem 0.3rem;
+		padding: var(--cell-padding-y) var(--cell-padding-x);
 		width: 100%;
 		overflow: hidden;
 		display: flex;
 		flex-direction: column;
-		gap: 0.15rem;
+		gap: 0.25rem;
 		background: transparent;
 		color: inherit;
 		font: inherit;
 		text-align: left;
-		border-top: 0;
-		border-left: 0;
 		cursor: pointer;
 		user-select: none;
 	}
 
+	.cal-cell:focus-visible {
+		outline: 2px solid var(--pico-primary);
+		outline-offset: -2px;
+	}
+
 	.cal-cell.first-weekday .event-list {
-		padding-left: calc(var(--first-weekday-content-inset) - 0.3rem);
+		padding-left: calc(var(--first-weekday-content-inset) - var(--cell-padding-x));
 	}
 
 	.cell-header {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		min-height: 1.15rem;
+		min-height: 1.25rem;
 		flex-shrink: 0;
 	}
 
@@ -338,41 +440,45 @@
 	}
 
 	.day-num {
-		font-size: 0.8rem;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.5rem;
+		height: 1.5rem;
+		font-size: 0.82rem;
 		font-weight: 600;
 		line-height: 1.15;
 		flex-shrink: 0;
+		border-radius: 50%;
 	}
 
 	.cal-cell.today .day-num {
 		background: var(--pico-primary);
 		color: var(--pico-primary-inverse);
-		border-radius: 50%;
-		width: 1.5rem;
-		height: 1.5rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
 	}
 
 	.event-list {
 		display: flex;
+		flex: 1 1 auto;
 		flex-direction: column;
-		gap: 0;
+		gap: 0.14rem;
+		min-height: 0;
+		padding-bottom: 0.1rem;
 		overflow: hidden;
 	}
 
 	.ev-chip {
 		display: flex;
 		gap: 0;
-		align-items: baseline;
+		align-items: center;
 		background-image: none;
 		border-left: 2px solid rgba(0, 0, 0, 0.15);
-		border-radius: 0.2rem;
-		padding: 0 0.24rem;
-		font-size: 0.68rem;
+		border-radius: 0.28rem;
+		padding: 0.1rem 0.34rem;
+		min-height: 1rem;
+		font-size: 0.71rem;
 		font-weight: 500;
-		line-height: 1.16;
+		line-height: 1.2;
 		overflow: hidden;
 		white-space: nowrap;
 	}
@@ -383,9 +489,22 @@
 	}
 
 	.overflow {
-		font-size: 0.62rem;
-		line-height: 1.1;
+		all: unset;
+		display: inline-flex;
+		align-items: center;
+		align-self: flex-start;
+		min-height: 1rem;
+		font-size: 0.66rem;
+		line-height: 1.2;
 		color: var(--pico-muted-color);
-		padding-left: 0.15rem;
+		padding: 0.1rem 0.35rem;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--pico-muted-border-color) 45%, transparent);
+		cursor: pointer;
+	}
+
+	.overflow:hover,
+	.overflow:focus-visible {
+		color: var(--pico-color);
 	}
 </style>
