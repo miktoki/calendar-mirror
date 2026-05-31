@@ -98,7 +98,69 @@
 		return `${mode}${reset}`;
 	}
 
-	onMount(loadLists);
+	function nextResetAt(list: TodoList): Date | null {
+		const kind = list.reset_kind ?? 'none';
+		if (kind === 'none') return null;
+
+		const now = new Date();
+		const next = new Date(now);
+		next.setMilliseconds(0);
+
+		if (kind === 'daily') {
+			next.setHours(24, 0, 0, 0);
+			return next;
+		}
+
+		if (kind === 'weekly') {
+			const targetDay = ((list.week_ends_on ?? 0) + 1) % 7;
+			const daysUntil = (targetDay - now.getDay() + 7) % 7 || 7;
+			next.setDate(now.getDate() + daysUntil);
+			next.setHours(0, 0, 0, 0);
+			return next;
+		}
+
+		if (kind === 'monthly') {
+			return new Date(now.getFullYear(), now.getMonth() + 1, 1);
+		}
+
+		if (kind === 'yearly') {
+			return new Date(now.getFullYear() + 1, 0, 1);
+		}
+
+		return null;
+	}
+
+	function formatResetNote(list: TodoList): string {
+		const next = nextResetAt(list);
+		if (!next) return '';
+
+		const timeFormatter = new Intl.DateTimeFormat(undefined, {
+			weekday: 'short',
+			month: 'short',
+			day: 'numeric',
+			hour: 'numeric',
+			minute: '2-digit'
+		});
+		return `Resets ${timeFormatter.format(next)}`;
+	}
+
+	onMount(() => {
+		loadLists();
+
+		const refreshVisibleLists = () => {
+			if (document.visibilityState === 'visible') {
+				loadLists();
+			}
+		};
+
+		document.addEventListener('visibilitychange', refreshVisibleLists);
+		window.addEventListener('focus', refreshVisibleLists);
+
+		return () => {
+			document.removeEventListener('visibilitychange', refreshVisibleLists);
+			window.removeEventListener('focus', refreshVisibleLists);
+		};
+	});
 
 	function saveSelection() {
 		try {
@@ -373,6 +435,7 @@
 						{#if panelList.list_type === 'counter'}
 							<CounterPanel
 								list={panelList}
+								resetNote={formatResetNote(panelList)}
 								state={counterState[panelId] ?? null}
 								error={counterError[panelId] ?? ''}
 								buttons={counterState[panelId] ? counterButtons(counterState[panelId]) : []}
@@ -383,6 +446,7 @@
 						{:else}
 							<TodoListPanel
 								list={panelList}
+								resetNote={formatResetNote(panelList)}
 								items={items[panelId] ?? []}
 								draft={newItemText[panelId] ?? ''}
 								onDraftChange={(value) => updateDraft(panelId, value)}

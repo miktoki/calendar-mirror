@@ -1,5 +1,4 @@
 import hashlib
-import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
@@ -58,20 +57,39 @@ def _default_event_time_min(now: datetime) -> str:
 
 
 def _counter_bucket(reset_kind: str, week_ends_on: int, now: datetime) -> str:
+    period_start = _reset_period_start(reset_kind, week_ends_on, now)
+    if period_start is None:
+        return "all-time"
+    if reset_kind == "daily":
+        return period_start.date().isoformat()
+    if reset_kind == "weekly":
+        return period_start.date().isoformat()
+    if reset_kind == "monthly":
+        return f"{period_start.year:04d}-{period_start.month:02d}"
+    if reset_kind == "yearly":
+        return f"{period_start.year:04d}"
+    return "all-time"
+
+
+def _reset_period_start(
+    reset_kind: str, week_ends_on: int, now: datetime
+) -> datetime | None:
     local_now = now.astimezone()
     if reset_kind == "daily":
-        return local_now.date().isoformat()
+        return local_now.replace(hour=0, minute=0, second=0, microsecond=0)
     if reset_kind == "weekly":
         weekday = (local_now.weekday() + 1) % 7
         week_start = (week_ends_on + 1) % 7
         days_since_start = (weekday - week_start) % 7
-        bucket_start = local_now.date() - timedelta(days=days_since_start)
-        return bucket_start.isoformat()
+        bucket_start = local_now - timedelta(days=days_since_start)
+        return bucket_start.replace(hour=0, minute=0, second=0, microsecond=0)
     if reset_kind == "monthly":
-        return f"{local_now.year:04d}-{local_now.month:02d}"
+        return local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     if reset_kind == "yearly":
-        return f"{local_now.year:04d}"
-    return "all-time"
+        return local_now.replace(
+            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+    return None
 
 
 def _db_init(db_path: str, calendar_ids: list[str]) -> None:
@@ -115,10 +133,13 @@ def _db_init(db_path: str, calendar_ids: list[str]) -> None:
                 list_id    INTEGER NOT NULL REFERENCES todo_lists(id) ON DELETE CASCADE,
                 text       TEXT NOT NULL,
                 done       INTEGER NOT NULL DEFAULT 0,
+                checked_at TEXT,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         """)
+        if not _has_column(conn, "todo_items", "checked_at"):
+            conn.execute("ALTER TABLE todo_items ADD COLUMN checked_at TEXT")
         event_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(events)").fetchall()
         }

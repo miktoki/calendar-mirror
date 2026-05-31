@@ -41,6 +41,7 @@ from db import (
     _db_connect,
     _db_init,
     _default_event_time_min,
+    _reset_period_start,
     event_sort_key,
     rows_as_dicts,
 )
@@ -114,6 +115,52 @@ def _get_counter_state(conn, list_id: int, now: datetime | None = None) -> dict:
         "value": value,
         "today": today,
     }
+
+
+def _apply_todo_resets(conn, list_id: int, now: datetime | None = None) -> None:
+    if now is None:
+        now = datetime.now(timezone.utc)
+
+    list_row = conn.execute(
+        "SELECT list_type, reset_kind, week_ends_on FROM todo_lists WHERE id = ?",
+        (list_id,),
+    ).fetchone()
+    if not list_row or list_row["list_type"] != "todo":
+        return
+
+    reset_kind = list_row["reset_kind"] or "none"
+    if reset_kind == "none":
+        return
+
+    period_start = _reset_period_start(reset_kind, list_row["week_ends_on"] or 0, now)
+    if period_start is None:
+        return
+
+    done_rows = conn.execute(
+        "SELECT id, checked_at FROM todo_items WHERE list_id = ? AND done = 1",
+        (list_id,),
+    ).fetchall()
+    stale_ids: list[tuple[int]] = []
+    for row in done_rows:
+        checked_at = row["checked_at"]
+        if not checked_at:
+            stale_ids.append((row["id"],))
+            continue
+        try:
+            checked_time = datetime.fromisoformat(checked_at)
+        except ValueError:
+            stale_ids.append((row["id"],))
+            continue
+        if checked_time.tzinfo is None:
+            checked_time = checked_time.replace(tzinfo=timezone.utc)
+        if checked_time.astimezone(period_start.tzinfo) < period_start:
+            stale_ids.append((row["id"],))
+
+    if stale_ids:
+        conn.executemany(
+            "UPDATE todo_items SET done = 0, checked_at = NULL WHERE id = ?",
+            stale_ids,
+        )
 
 
 async def _service(
@@ -466,8 +513,9 @@ async def delete_list(list_id: int):
 @app.get("/api/lists/{list_id}/items")
 async def get_items(list_id: int):
     with db_connect() as conn:
+        _apply_todo_resets(conn, list_id)
         rows = conn.execute(
-            "SELECT * FROM todo_items WHERE list_id = ? ORDER BY sort_order, created_at",
+            "SELECT * FROM todo_items WHERE list_id = ? ORDER BY done, sort_order, created_at",
             (list_id,),
         ).fetchall()
     return rows_as_dicts(rows)
@@ -491,6 +539,9 @@ async def patch_item(item_id: int, body: ItemPatch):
         raise HTTPException(status_code=400, detail="nothing to update")
     if "done" in fields:
         fields["done"] = int(fields["done"])
+        fields["checked_at"] = (
+            datetime.now(timezone.utc).isoformat() if fields["done"] else None
+        )
     set_clause = ", ".join(f"{k} = ?" for k in fields)
     with db_connect() as conn:
         conn.execute(

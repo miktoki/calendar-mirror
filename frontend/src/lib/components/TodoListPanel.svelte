@@ -4,6 +4,7 @@
 	export let list: TodoList;
 	export let items: TodoItem[] = [];
 	export let draft = '';
+	export let resetNote = '';
 	export let onDraftChange: ((value: string) => void) | undefined = undefined;
 	export let onAddItem: (() => void) | undefined = undefined;
 	export let onToggleItem: ((item: TodoItem) => void) | undefined = undefined;
@@ -16,7 +17,12 @@
 
 <section class="todo-panel">
 	<header class="panel-header">
-		<div class="panel-title">{list.name}</div>
+		<div>
+			<div class="panel-title">{list.name}</div>
+			{#if resetNote}
+				<div class="panel-note">{resetNote}</div>
+			{/if}
+		</div>
 		<button type="button" class="outline panel-close" on:click={() => onHide?.()} aria-label="Hide panel">✕</button>
 	</header>
 
@@ -87,6 +93,13 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.panel-note {
+		font-size: 0.72rem;
+		color: var(--pico-muted-color);
+		line-height: 1.2;
+		margin-top: 0.12rem;
 	}
 
 	.panel-close {
